@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="es" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>Samurai Barber · Gestión</title>
+<script>
+// Tema: se resuelve antes de pintar para evitar el parpadeo. 'auto' sigue al sistema.
+(function(){
+  var t='auto';
+  try{ t=localStorage.getItem('samurai-v2-theme')||'auto'; }catch(e){}
+  var dark = t==='dark' || (t==='auto' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  document.documentElement.setAttribute('data-theme', dark?'dark':'light');
+})();
+</script>
+<style>
+/* =====================================================================
+   SAMURAI BARBER · Gestión interna del barbero
+   Un solo archivo. Compatible con Chrome 109 (Windows 7): sin :has(),
+   sin container queries, sin nesting, sin color-mix, sin dvh.
+   Secciones:  1) Tokens y base   2) Layout y navegación   3) Agenda (Hoy)
+               4) Sheet / alta    5) Clientes   6) Semana   7) Caja
+               8) Productos       9) Animaciones y utilidades
+   ===================================================================== */
+
+/* ---------- 1) Tokens ---------- */
+:root{
+  --bg:#f1ece3; --bg2:#e9e2d5; --card:#fffdf9; --card2:#f7f2e9; --card3:#efe9dd;
+  --ink:#17161a; --ink2:#4f4c47; --mut:#8a857c; --line:#e2dbce; --line2:#cfc6b5;
+  --red:#b3302b; --red2:#d4463f; --red-bg:#f8e3e1; --gold:#b8933f; --gold-bg:#f6ecd2; --cream:#f5efe4;
+  --online:#4659c9; --online-bg:#e6e9fa; --silla:#c98312; --silla-bg:#fbeed3; --ok:#2a8a55; --ok-bg:#dff2e6; --no:#8a857c; --no-bg:#ebe8e1;
+  --shadow:0 1px 2px rgba(30,20,10,.06),0 8px 24px rgba(30,20,10,.08);
+  --shadow-lg:0 2px 6px rgba(30,20,10,.1),0 24px 60px rgba(30,20,10,.22);
+  --r:14px; --r-sm:10px; --nav-h:64px; --slot:58px; --side-w:236px;
+  --font:"Segoe UI",system-ui,-apple-system,Roboto,"Helvetica Neue",Arial,sans-serif;
+}
+html[data-theme=dark]{
+  --bg:#0e0e11; --bg2:#141418; --card:#1a1a1f; --card2:#212127; --card3:#2a2a31;
+  --ink:#f1ece3; --ink2:#c9c3b8; --mut:#8e897f; --line:#2a2a31; --line2:#3a3a42;
+  --red:#e2493f; --red2:#f0655c; --red-bg:#3a1b19; --gold:#d8b25f; --gold-bg:#3a2f14; --cream:#f1ece3;
+  --online:#8d9cf4; --online-bg:#23294a; --silla:#f0b34a; --silla-bg:#3b2d12; --ok:#4fc37f; --ok-bg:#143d26; --no:#8e897f; --no-bg:#26262b;
+  --shadow:0 1px 2px rgba(0,0,0,.5),0 8px 24px rgba(0,0,0,.45);
+  --shadow-lg:0 2px 6px rgba(0,0,0,.6),0 24px 60px rgba(0,0,0,.6);
+}
+
+/* ---------- Base ---------- */
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.35 var(--font);-webkit-font-smoothing:antialiased;overscroll-behavior-y:none}
+button,input,textarea,select{font:inherit;color:inherit}
+button{cursor:pointer;border:0;background:none;padding:0;margin:0;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+button:disabled{opacity:.45;cursor:default}
+:focus{outline:none}
+:focus-visible{outline:3px solid var(--online);outline-offset:2px;border-radius:6px}
+h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.01em}
+.num{font-variant-numeric:tabular-nums}
+.mut{color:var(--mut)}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+svg{display:block}
+::selection{background:var(--red);color:#fff}
+
+/* ---------- 2) Layout ---------- */
+.app{display:flex;min-height:100vh}
+.side{display:none}
+.main{flex:1;min-width:0;display:flex;flex-direction:column;min-height:100vh}
+.top{position:sticky;top:0;z-index:20;background:var(--bg);border-bottom:1px solid var(--line)}
+.top-row{display:flex;align-items:center;gap:10px;padding:10px 16px 6px}
+.brand{display:flex;align-items:center;gap:10px;min-width:0}
+.brand .logo{width:34px;height:34px;flex:none}
+.brand b{font-size:17px;letter-spacing:.02em;white-space:nowrap}
+.brand small{display:block;font-size:11px;color:var(--mut);letter-spacing:.14em;text-transform:uppercase;margin-top:-2px}
+.top-row .grow{flex:1}
+.ibtn{width:44px;height:44px;border-radius:12px;display:inline-flex;align-items:center;justify-content:center;color:var(--ink2);background:transparent;transition:background .15s,transform .1s}
+.ibtn:hover{background:var(--card2)}
+.ibtn:active{transform:scale(.94)}
+.ibtn svg{width:22px;height:22px}
+.view{display:none;flex:1;padding:0 0 calc(var(--nav-h) + 16px)}
+.view.on{display:block;animation:fadeUp .25s ease both}
+.wrap{padding:0 16px;max-width:1120px;margin:0 auto;width:100%}
+
+/* Navegación inferior (celular) */
+.nav{position:fixed;left:0;right:0;bottom:0;height:var(--nav-h);background:var(--card);border-top:1px solid var(--line);display:flex;z-index:30;padding-bottom:env(safe-area-inset-bottom)}
+.nav button{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:11px;font-weight:600;color:var(--mut);position:relative;transition:color .15s}
+.nav button svg{width:24px;height:24px;transition:transform .2s}
+.nav button.on{color:var(--red)}
+.nav button.on svg{transform:translateY(-2px)}
+.nav button.on::after{content:"";position:absolute;top:0;left:50%;width:28px;height:3px;margin-left:-14px;border-radius:0 0 3px 3px;background:var(--red)}
+.nav .badge{position:absolute;top:8px;left:50%;margin-left:6px;min-width:16px;height:16px;border-radius:8px;background:var(--red);color:#fff;font-size:10px;line-height:16px;padding:0 4px;text-align:center}
+
+/* Escritorio: barra lateral + contenido ancho */
+@media (min-width:900px){
+  .side{display:flex;flex-direction:column;width:var(--side-w);flex:none;background:var(--card);border-right:1px solid var(--line);position:sticky;top:0;height:100vh;padding:18px 14px}
+  .side .brand{padding:4px 8px 18px}
+  .side .brand .logo{width:40px;height:40px}
+  .side nav{display:flex;flex-direction:column;gap:4px}
+  .side nav button{display:flex;align-items:center;gap:12px;padding:11px 12px;border-radius:12px;font-weight:600;color:var(--ink2);text-align:left;transition:background .15s,color .15s}
+  .side nav button svg{width:22px;height:22px}
+  .side nav button:hover{background:var(--card2)}
+  .side nav button.on{background:var(--red);color:#fff;box-shadow:0 6px 16px rgba(179,48,43,.3)}
+  .side .badge{margin-left:auto;background:var(--gold-bg);color:var(--gold);font-size:11px;border-radius:9px;padding:1px 7px}
+  .side nav button.on .badge{background:rgba(255,255,255,.25);color:#fff}
+  .side .foot{margin-top:auto;display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--mut)}
+  .side .foot button{display:flex;align-items:center;gap:8px;padding:9px 10px;border-radius:10px;color:var(--ink2);font-size:13px}
+  .side .foot button:hover{background:var(--card2)}
+  .side .foot svg{width:18px;height:18px}
+  .nav{display:none}
+  .view{padding-bottom:32px}
+  .top-row{padding:14px 24px 8px}
+  .top .brand{display:none}
+  .wrap{padding:0 24px}
+}

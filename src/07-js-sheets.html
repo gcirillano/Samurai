@@ -1,0 +1,268 @@
+<script>
+/* =====================================================================
+   JS · PARTE 3: SHEETS (panel inferior): alta/edición de turno, menú,
+   ficha de cliente, gasto, producto, servicios y ajustes
+   ===================================================================== */
+var sheetOpen=false;
+function openSheet(html){
+  var s=$('#sheet');s.innerHTML=html;$('#sheetBg').classList.add('on');sheetOpen=true;hideToast();s.scrollTop=0;var sc=$('.sc',s);if(sc)sc.scrollTop=0;
+  $$('[data-close]',s).forEach(function(b){b.onclick=closeSheet});
+  var af=$('[data-af]',s);if(af&&window.innerWidth>=900)setTimeout(function(){af.focus()},50);   // en celular no se abre el teclado solo
+}
+function closeSheet(){if(!sheetOpen)return;$('#sheetBg').classList.remove('on');sheetOpen=false}
+function sheetFrame(title,sub,body,footer){
+  return '<div class="handle"></div><div class="sh"><h2>'+title+(sub?'<span class="sub">'+sub+'</span>':'')+'</h2><button type="button" class="ibtn" data-close aria-label="Cerrar">'+icon('x')+'</button></div><div class="sc">'+body+'</div>'+(footer?'<div class="sf">'+footer+'</div>':'');
+}
+$('#sheetBg').addEventListener('click',function(e){if(e.target.id==='sheetBg')closeSheet()});
+document.addEventListener('keydown',function(e){if(e.key==='Escape')closeSheet()});
+function parseHora(v){var m=/^(\d{1,2})[:.hH ]?(\d{2})$/.exec(String(v).trim());if(!m)return null;var h=+m[1],mi=+m[2];if(h>23||mi>59)return null;return h*60+mi}
+function digitsOf(s){return String(s).replace(/\D/g,'')}
+
+// ---------- ALTA / EDICIÓN DE TURNO ----------
+// Meta: 3 toques. Tocar un hueco (1) → tocar el nombre sugerido (2) → Guardar (3).
+var A=null;
+function sheetAlta(o){
+  o=o||{};var t=o.id?turnoById(o.id):null,hoy=hoyIso();
+  A=t?{id:t.id,fecha:t.fecha,hora:toMin(t.hora),dur:t.dur||30,nombre:t.nombre,servicio:t.servicio,precio:t.precio,pago:t.pago,estado:t.estado,origen:t.origen,propina:t.propina||0,nota:t.nota||'',fresh:true}
+     :{id:null,fecha:o.fecha||ui.fecha,hora:toMin(o.hora||'10:00'),dur:30,nombre:o.nombre||'',servicio:db.servicios[0].n,precio:db.servicios[0].p,pago:'',estado:o.enSilla?'silla':'confirmado',origen:'local',propina:0,nota:'',fresh:true};
+  A.ventas=db.ventas.filter(function(v){return v.turnoId===A.id}).map(function(v){return {prodId:v.prodId,nombre:v.nombre,precio:v.precio,id:v.id}});
+  A.ventasQuitar=[];
+  var svc=db.servicios.map(function(s,i){return '<button type="button" class="svc" data-svc="'+i+'"><b>'+esc(s.n)+'</b><small>'+money(s.p)+'</small></button>'}).join('');
+  var body='<span class="lbl">Horario · '+fechaCorta(A.fecha)+'</span>'
+    +'<div class="timebar"><button type="button" class="st" data-dm="-30">−30</button><button type="button" class="st" data-dm="-5">−5</button><input class="t" id="aHora" inputmode="numeric" aria-label="Hora" value="'+hm(A.hora)+'"><button type="button" class="st" data-dm="5">+5</button><button type="button" class="st" data-dm="30">+30</button></div>'
+    +'<div class="chips" style="margin-top:8px" id="aDur">'+[30,45,60].map(function(d){return '<button type="button" class="chip plain" data-dur="'+d+'">'+d+' min</button>'}).join('')+'</div>'
+    +'<span class="lbl">Cliente</span><input class="field" id="aNombre" placeholder="Nombre o apodo" autocomplete="off" autocapitalize="words" value="'+esc(A.nombre)+'" data-af>'
+    +'<div class="chips scroll" id="aSug" style="margin-top:8px"></div><div id="aHint"></div>'
+    +'<span class="lbl">Servicio <span class="r" id="aEditSvc">editar precios</span></span><div class="services" id="aSvc">'+svc+'</div>'
+    +'<span class="lbl">Precio</span><div class="pricebox"><input class="money num" id="aPrecio" inputmode="none" aria-label="Precio" value="'+money(A.precio).slice(1)+'"><div class="sug" id="aPrecioSug"></div></div>'
+    +'<div class="keypad" id="aPad">'+['1','2','3','4','5','6','7','8','9','000','0','del'].map(function(k){return k==='del'?'<button type="button" class="fn" data-k="del" aria-label="Borrar">'+icon('left')+'</button>':'<button type="button" data-k="'+k+'">'+k+'</button>'}).join('')+'</div>'
+    +'<span class="lbl">Pago</span><div class="seg" id="aPago"><button type="button" class="ok" data-p="efectivo">'+icon('cash')+'Efectivo</button><button type="button" class="ok" data-p="transferencia">'+icon('transfer')+'Transferencia</button><button type="button" data-p="">Sin cobrar</button></div>'
+    +'<span class="lbl">Estado</span><div class="seg wrap" id="aEstado">'+(A.origen==='online'?'<button type="button" class="online" data-e="reservado">'+icon('globe')+'Reserva</button>':'')+'<button type="button" data-e="confirmado">Confirmado</button><button type="button" class="silla" data-e="silla">'+icon('chair')+'En silla</button><button type="button" class="ok" data-e="cobrado">'+icon('check')+'Cobrado</button><button type="button" class="no" data-e="nocame">'+icon('ghost')+'Faltó</button></div>'
+    +'<span class="lbl">Extras (se suman solos al día)</span><div class="extras" id="aExtras"></div>'
+    +'<span class="lbl">Nota del turno</span><input class="field" id="aNota" placeholder="Ej.: fade bajo, viene con el hijo" value="'+esc(A.nota)+'">';
+  var foot=(A.id?'<button type="button" class="btn ghost danger" id="aBorrar" style="flex:0 0 auto" aria-label="Borrar turno">'+icon('trash')+'</button>':'')+'<button type="button" class="btn pri" id="aGuardar">'+icon('check')+'Guardar turno</button>';
+  openSheet(sheetFrame(A.id?'Editar turno':'Nuevo turno',A.id?esc(A.nombre)+' · '+hm(A.hora):'',body,foot));
+  var s=$('#sheet');
+  // horario
+  $$('[data-dm]',s).forEach(function(b){b.onclick=function(){A.hora=Math.max(0,Math.min(23*60+55,A.hora+(+b.getAttribute('data-dm'))));$('#aHora').value=hm(A.hora)}});
+  $('#aHora').onchange=function(){var m=parseHora(this.value);if(m==null){this.classList.add('shake');this.value=hm(A.hora);setTimeout(function(){$('#aHora').classList.remove('shake')},300)}else{A.hora=m;this.value=hm(m)}};
+  $$('[data-dur]',s).forEach(function(b){b.onclick=function(){A.dur=+b.getAttribute('data-dur');pintarAlta()}});
+  // cliente
+  var inp=$('#aNombre');inp.oninput=function(){A.nombre=inp.value;pintarSug();pintarHint()};
+  // servicios y precio
+  $$('[data-svc]',s).forEach(function(b){b.onclick=function(){var sv=db.servicios[+b.getAttribute('data-svc')];A.servicio=sv.n;A.precio=sv.p;if(sv.dur)A.dur=sv.dur;A.fresh=true;pintarAlta()}});
+  $('#aEditSvc').onclick=function(){sheetServicios(function(){sheetAlta(o)})};
+  var pre=$('#aPrecio');
+  pre.oninput=function(){A.precio=+digitsOf(pre.value)||0;A.fresh=false;pintarAlta(true)};
+  pre.onfocus=function(){A.fresh=true};
+  $$('[data-k]',s).forEach(function(b){b.onclick=function(){var k=b.getAttribute('data-k'),d=A.fresh?'':String(A.precio||'');
+    if(k==='del')d=d.slice(0,-1);else if(d.length<9)d+=k;A.precio=+d||0;A.fresh=false;pintarAlta()}});
+  // pago y estado (se mantienen coherentes entre sí)
+  $$('[data-p]',s).forEach(function(b){b.onclick=function(){var p=b.getAttribute('data-p');A.pago=p;
+    if(p){A.estado='cobrado'}else if(A.estado==='cobrado'){A.estado=(A.fecha===hoy&&A.hora<=ahoraMin())?'silla':'confirmado'}pintarAlta()}});
+  $$('[data-e]',s).forEach(function(b){b.onclick=function(){var e=b.getAttribute('data-e');A.estado=e;
+    if(e==='cobrado'){if(!A.pago)A.pago=statsCliente(A.nombre).pagoHab||'efectivo'}else A.pago='';pintarAlta()}});
+  // guardar / borrar
+  $('#aGuardar').onclick=guardarAlta;
+  if(A.id)$('#aBorrar').onclick=function(){var id=A.id;closeSheet();borrarTurno(id)};
+  $('#aNota').oninput=function(){A.nota=this.value};
+  inp.onkeydown=function(e){if(e.key==='Enter'){e.preventDefault();guardarAlta()}};
+  pintarAlta();pintarSug();pintarHint();
+}
+function pintarAlta(skipPrecio){
+  var s=$('#sheet');
+  $$('[data-dur]',s).forEach(function(b){b.classList.toggle('on',+b.getAttribute('data-dur')===A.dur)});
+  $$('[data-svc]',s).forEach(function(b){b.classList.toggle('on',db.servicios[+b.getAttribute('data-svc')].n===A.servicio)});
+  if(!skipPrecio)$('#aPrecio').value=A.precio?money(A.precio).slice(1):'';
+  $$('[data-p]',s).forEach(function(b){b.classList.toggle('on',b.getAttribute('data-p')===A.pago)});
+  $$('[data-e]',s).forEach(function(b){b.classList.toggle('on',b.getAttribute('data-e')===A.estado)});
+  var st=A.nombre?statsCliente(A.nombre):null;
+  $('#aPrecioSug').innerHTML=(st&&st.n&&st.precioHab!==A.precio)?'último pago<b>'+money(st.precioHab)+'</b>':(st&&st.n?'mismo precio<b>que la última vez</b>':'precio de lista<b>'+money((db.servicios.filter(function(x){return x.n===A.servicio})[0]||{p:0}).p)+'</b>');
+  // extras: propina y productos
+  var ex='';[1000,2000,5000].forEach(function(p){ex+='<button type="button" class="chip plain'+(A.propina===p?' tipon':'')+'" data-tip="'+p+'">'+icon('tip')+'+'+money(p)+'</button>'});
+  db.productos.forEach(function(p){var sold=A.ventas.filter(function(v){return v.prodId===p.id}).length;
+    ex+='<button type="button" class="chip plain'+(sold?' sold':'')+'" data-prod="'+p.id+'"'+(p.stock<=0&&!sold?' disabled':'')+'>'+esc(p.nombre)+' <small>'+money(p.precio)+'</small>'+(sold?'<span class="x">×'+sold+'</span>':'')+'</button>'});
+  $('#aExtras').innerHTML=ex;
+  $$('[data-tip]',s).forEach(function(b){b.onclick=function(){var p=+b.getAttribute('data-tip');A.propina=A.propina===p?0:p;pintarAlta()}});
+  $$('[data-prod]',s).forEach(function(b){b.onclick=function(){var id=b.getAttribute('data-prod'),p=prodById(id);
+    var i=-1;A.ventas.forEach(function(v,k){if(v.prodId===id)i=k});
+    if(i>=0){var q=A.ventas.splice(i,1)[0];if(q.id)A.ventasQuitar.push(q.id);toast(esc(p.nombre)+' quitado')}
+    else{A.ventas.push({prodId:id,nombre:p.nombre,precio:p.precio});toast(esc(p.nombre)+' agregado al turno · '+money(p.precio))}
+    pintarAlta()}});
+}
+function pintarSug(){
+  var q=A.nombre||'',l=sugerirClientes(q,8).filter(function(c){return c.nombre!==q});
+  $('#aSug').innerHTML=l.map(function(c){return '<button type="button" class="chip" data-n="'+esc(c.nombre)+'">'+avatar(c.nombre,'sm')+esc(c.nombre)+(c.reincidente?'<span class="warn">'+icon('warn')+'</span>':'')+'<small>'+(c.n?money(c.precioHab):'nuevo')+'</small></button>'}).join('')||(q?'<span class="mut" style="font-size:13px;padding:6px 0">Cliente nuevo: se le arma la ficha sola.</span>':'');
+  $$('#aSug [data-n]').forEach(function(b){b.onclick=function(){elegirCliente(b.getAttribute('data-n'))}});
+}
+function elegirCliente(n){
+  A.nombre=n;$('#aNombre').value=n;var st=statsCliente(n);
+  if(st.n){A.precio=st.precioHab;A.fresh=true;var sv=db.servicios.filter(function(x){return x.n===st.servHab})[0];if(sv){A.servicio=sv.n;if(sv.dur)A.dur=sv.dur}}
+  pintarAlta();pintarSug();pintarHint();vibrar(8);
+}
+function pintarHint(){
+  var n=(A.nombre||'').trim(),el=$('#aHint');if(!n){el.innerHTML='';return}
+  var st=statsCliente(n);
+  if(!st.n&&!st.faltas.length){el.innerHTML='<div class="hint">'+icon('clientes')+'<span>Cliente nuevo. Con este turno se le arma la ficha sola.</span></div>';return}
+  var txt='<b>'+st.n+' visita'+(st.n===1?'':'s')+'</b>'+(st.ritmo?' · viene cada ~'+st.ritmo+' días':'')+(st.ultima?' · última '+haceDias(st.desde)+': '+esc(st.ultima.servicio)+' '+money(st.ultima.precio)+' ('+(st.ultima.pago||'sin cobrar')+')':'');
+  if(st.reincidente)txt+=' · <b style="color:var(--red)">faltó '+st.faltas.length+' veces</b>';
+  el.innerHTML='<div class="hint'+(st.reincidente?' warn':'')+'">'+avatar(n,'sm')+'<span>'+txt+'</span></div>';
+}
+function guardarAlta(){
+  var n=nombreCanonico((A.nombre||'').trim()),inp=$('#aNombre');
+  if(!n){inp.classList.add('shake');inp.focus();setTimeout(function(){inp.classList.remove('shake')},300);return}
+  var hm_=parseHora($('#aHora').value);if(hm_!=null)A.hora=hm_;
+  if(A.estado==='cobrado'&&!A.pago)A.pago=statsCliente(n).pagoHab||'efectivo';
+  var t=A.id?turnoById(A.id):null,nuevo=!t;
+  if(!t){t={id:uid(),origen:A.origen};db.turnos.push(t)}
+  t.fecha=A.fecha;t.hora=hm(A.hora);t.dur=A.dur;t.nombre=n;t.servicio=A.servicio;t.precio=A.precio||0;t.pago=A.pago;t.estado=A.estado;t.propina=A.propina||0;t.nota=A.nota||'';
+  // ventas de productos asociadas al turno
+  A.ventasQuitar.forEach(function(id){var v=db.ventas.filter(function(x){return x.id===id})[0];if(v){var p=prodById(v.prodId);if(p)p.stock+=v.cant;db.ventas=db.ventas.filter(function(x){return x.id!==id})}});
+  A.ventas.forEach(function(v){if(v.id)return;var p=prodById(v.prodId);if(p)p.stock=Math.max(0,p.stock-1);db.ventas.push({id:uid(),fecha:t.fecha,hora:t.hora,prodId:v.prodId,nombre:v.nombre,precio:v.precio,cant:1,pago:t.pago||'efectivo',turnoId:t.id,cliente:n})});
+  if(!db.clientes[n])db.clientes[n]={tel:'',notas:''};
+  save();closeSheet();
+  if(ui.view==='hoy'&&ui.fecha!==t.fecha){ui.fecha=t.fecha}
+  if(t.estado==='cobrado'&&nuevo&&ui.view==='hoy')renderHoy({paid:t.id,keepScroll:true});else refrescar();
+  toast((nuevo?'Turno anotado':'Turno guardado')+' · '+t.hora+' '+esc(n)+(t.estado==='cobrado'?' · '+money(t.precio):''));
+}
+
+// ---------- MENÚ CONTEXTUAL DEL TURNO (mantener presionado / botón ⋯ / clic derecho) ----------
+function sheetMenuTurno(id){
+  var t=turnoById(id);if(!t)return;var st=statsCliente(t.nombre);
+  function it(cls,ic,txt,fn,sub){return '<button type="button" class="'+cls+'" data-m="'+fn+'"><span class="ic">'+icon(ic)+'</span><span>'+txt+(sub?'<small class="mut" style="display:block;font-weight:500;font-size:12px">'+sub+'</small>':'')+'</span></button>'}
+  var body='<div class="menu">'
+    +(t.estado!=='silla'?it('c-silla','chair','En la silla','silla'):'')
+    +(t.estado!=='cobrado'?it('c-ok','cash','Cobrar en efectivo','cobrar-efectivo',money(t.precio+(t.propina||0)))+it('c-ok','transfer','Cobrar por transferencia','cobrar-transferencia'):it('c-ok',t.pago==='efectivo'?'transfer':'cash','Cambiar a '+(t.pago==='efectivo'?'transferencia':'efectivo'),'cambiar-pago'))
+    +(t.estado!=='nocame'?it('c-no','ghost','Faltó','nocame',st.faltas.length?'ya faltó '+st.faltas.length+(st.faltas.length===1?' vez':' veces'):''):it('','check','Volver a confirmado','confirmado'))
+    +'<div class="sep"></div>'
+    +it('','edit','Editar turno','editar','horario, servicio, precio, propina, productos')
+    +it('','clientes','Ficha de '+esc(t.nombre),'ficha',st.n?st.n+' visitas':'cliente nuevo')
+    +'<div class="sep"></div>'+it('c-red','trash','Borrar turno','borrar')+'</div>';
+  openSheet(sheetFrame(esc(t.nombre),t.hora+' · '+esc(t.servicio)+' · '+money(t.precio)+(t.estado==='cobrado'?' · cobrado':''),body,''));
+  $$('#sheet [data-m]').forEach(function(b){b.onclick=function(){var m=b.getAttribute('data-m');closeSheet();
+    if(m==='silla')setEstado(id,'silla');else if(m==='cobrar-efectivo')cobrar(id,'efectivo');else if(m==='cobrar-transferencia')cobrar(id,'transferencia');
+    else if(m==='cambiar-pago'){t.pago=t.pago==='efectivo'?'transferencia':'efectivo';save();refrescar();toast('Pago: '+t.pago)}
+    else if(m==='nocame')setEstado(id,'nocame');else if(m==='confirmado')setEstado(id,'confirmado');
+    else if(m==='editar')sheetAlta({id:id});else if(m==='ficha')sheetFicha(t.nombre);else if(m==='borrar')borrarTurno(id)}});
+}
+
+// ---------- FICHA DEL CLIENTE (se arma sola con los turnos) ----------
+var notasT=null;
+function sheetFicha(n,todo){
+  var st=statsCliente(n),hoy=hoyIso();
+  var estadoTxt,cls='ok',fill=0;
+  if(st.n===0)estadoTxt='Todavía no vino';
+  else if(!st.ritmo){estadoTxt='Una sola visita, '+haceDias(st.desde);cls=st.estado==='late'?'late':'ok';fill=Math.min(1,st.desde/45)}
+  else{fill=Math.min(1,st.desde/st.ritmo);cls=st.estado==='late'?'late':st.estado==='due'?'due':'ok';
+    estadoTxt=st.atraso>0?'Tendría que haber vuelto hace '+st.atraso+' día'+(st.atraso===1?'':'s'):st.atraso===0?'Le toca hoy':'Le toca en '+(-st.atraso)+' día'+(st.atraso===-1?'':'s')}
+  var kp='<div class="kpis"><div><b>'+st.n+'</b><small>visitas</small></div><div><b>'+(st.ritmo?'~'+st.ritmo+' d':'—')+'</b><small>viene cada</small></div><div><b>'+(st.servHab?esc(st.servHab):'—')+'</b><small>'+(st.precioHab?money(st.precioHab):'habitual')+'</small></div><div><b>'+money(st.total)+'</b><small>total</small></div></div>';
+  var tel=digitsOf(st.tel),msg='Hola '+n.replace(/\s*\(.*\)/,'')+'! Soy Augusto, de Samurai Barber. '+(st.desde>=14?'Hace '+Math.round(st.desde/7)+' semanas que no nos vemos, ':'')+'¿te anoto un turno esta semana?';
+  var waBtn=tel?'<button type="button" class="btn wa" id="fWa">'+icon('wa')+'WhatsApp</button>':'<button type="button" class="btn" id="fCopy" title="Sin teléfono: copia el mensaje para pegarlo">'+icon('copy')+'Copiar mensaje</button>';
+  var prox=st.proximaSugerida?(st.proximaSugerida<hoy?hoy:st.proximaSugerida):null;
+  var body='<div class="ficha-head">'+avatar(n,'lg')+'<div class="tx"><h2>'+esc(n)+'</h2><div class="sub">'+(st.ultima?'Última visita '+haceDias(st.desde)+' · '+fechaCorta(st.ultima.fecha):'Sin visitas todavía')+(st.pagoHab&&st.n?' · paga en '+st.pagoHab:'')+'</div></div></div>'
+    +(st.faltas.length?'<span class="pill red" style="margin-bottom:6px">'+icon('warn')+'Faltó '+st.faltas.length+(st.faltas.length===1?' vez':' veces')+(st.reincidente?' · reincidente':'')+'</span>':'')
+    +'<div style="font-size:14px;font-weight:600;color:var(--'+(cls==='ok'?'ok':cls==='due'?'silla':'red')+')">'+estadoTxt+'</div>'
+    +'<div class="gauge '+cls+'"><i style="width:'+Math.round(fill*100)+'%"></i><span class="mark" style="left:100%;margin-left:-2px"></span></div>'
+    +kp
+    +(prox?'<div class="hint" style="margin-top:10px">'+icon('clock')+'<span>Próxima visita sugerida: <b>'+fechaCorta(prox)+'</b> (según su ritmo). Es solo una sugerencia.</span><button type="button" class="btn sm" id="fProx" style="margin-left:auto">Anotar</button></div>':'')
+    +'<div class="actions-row"><button type="button" class="btn pri" id="fTurno">'+icon('plus')+'Turno hoy</button>'+waBtn+'</div>'
+    +'<span class="lbl">Notas (se guardan solas)</span><textarea class="field" id="fNotas" placeholder="Ej.: fade bajo, barba perfilada, no le gusta la máquina en la nuca">'+esc(st.notas)+'</textarea>'
+    +'<span class="lbl">Teléfono (opcional, para WhatsApp)</span><input class="field" id="fTel" inputmode="tel" placeholder="11 5555 1234" value="'+esc(st.tel)+'">'
+    +'<span class="lbl">Historial</span><div class="timeline">';
+  var items=[];
+  (clientesIndex()[n]||[]).forEach(function(t){items.push({f:t.fecha,h:t.hora,cls:t.estado==='nocame'?'nocame':(t.fecha>hoy||(t.estado!=='cobrado'&&t.estado!=='silla'))?'future':'',s:t.estado==='nocame'?'Faltó · '+t.servicio:(t.fecha>hoy?'Próximo turno · ':'')+t.servicio+(t.propina?' + propina':''),p:t.estado==='nocame'?'':money(t.precio+(t.propina||0)),pay:t.pago})});
+  st.ventas.forEach(function(v){items.push({f:v.fecha,h:v.hora,cls:'prod',s:'Producto · '+v.nombre,p:money(v.precio*v.cant),pay:v.pago})});
+  items.sort(function(a,b){return (b.f+b.h)>(a.f+a.h)?1:-1});
+  var lim=todo?items.length:10;
+  body+=items.slice(0,lim).map(function(i){return '<div class="tl '+i.cls+'"><span class="d">'+fechaCorta(i.f)+'</span><span class="s">'+esc(i.s)+'</span><span class="p">'+i.p+(i.pay?'<span class="pay">'+(i.pay==='transferencia'?'transf.':'efec.')+'</span>':'')+'</span></div>'}).join('')||'<div class="mut" style="padding:8px 0">Sin movimientos.</div>';
+  body+='</div>'+(items.length>lim?'<button type="button" class="btn sm ghost full" id="fTodo" style="margin-top:8px">Ver las '+items.length+' visitas</button>':'')+'<div style="height:8px"></div>';
+  openSheet(sheetFrame(esc(n),'',body,''));
+  $('#fTurno').onclick=function(){closeSheet();sheetAlta({fecha:hoyIso(),hora:sugerirHora(hoyIso()),nombre:n})};
+  if(prox)$('#fProx').onclick=function(){closeSheet();sheetAlta({fecha:prox,hora:sugerirHora(prox),nombre:n})};
+  if(tel)$('#fWa').onclick=function(){var d=tel;if(d.charAt(0)==='0')d=d.slice(1);if(d.length===10)d='549'+d;else if(d.indexOf('54')!==0)d='54'+d;window.open('https://wa.me/'+d+'?text='+encodeURIComponent(msg),'_blank')};
+  else $('#fCopy').onclick=function(){copiar(msg);toast('Mensaje copiado. Cargale el teléfono y se manda por WhatsApp.')};
+  $('#fNotas').oninput=function(){var v=this.value;clearTimeout(notasT);notasT=setTimeout(function(){db.clientes[n]=db.clientes[n]||{tel:'',notas:''};db.clientes[n].notas=v;save()},400)};
+  $('#fTel').oninput=function(){var v=this.value;db.clientes[n]=db.clientes[n]||{tel:'',notas:''};db.clientes[n].tel=v;save()};
+  $('#fTel').onchange=function(){sheetFicha(n,todo)};
+  var ft=$('#fTodo');if(ft)ft.onclick=function(){sheetFicha(n,true)};
+}
+function copiar(txt){
+  try{if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(txt);return}}catch(e){}
+  var ta=document.createElement('textarea');ta.value=txt;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.select();try{document.execCommand('copy')}catch(e){}document.body.removeChild(ta);
+}
+
+// ---------- GASTO (concepto + monto, 2 toques con los recientes) ----------
+function sheetGasto(){
+  var G={concepto:'',monto:0,fresh:true},conceptos=['Insumos','Limpieza','Navajas y hojas','Luz','Alquiler','Café y agua','Otro'];
+  var rec=[],seen={};db.gastos.slice().sort(function(a,b){return a.fecha<b.fecha?1:-1}).forEach(function(g){var k=g.concepto+'|'+g.monto;if(!seen[k]&&rec.length<6){seen[k]=1;rec.push(g)}});
+  var body='<span class="lbl">Repetir uno reciente (un toque)</span><div class="chips scroll">'+rec.map(function(g,i){return '<button type="button" class="chip plain" data-rec="'+i+'">'+esc(g.concepto)+' <small>'+money(g.monto)+'</small></button>'}).join('')+'</div>'
+    +'<span class="lbl">Concepto</span><div class="chips" id="gConc">'+conceptos.map(function(c){return '<button type="button" class="chip plain" data-c="'+c+'">'+c+'</button>'}).join('')+'</div>'
+    +'<input class="field" id="gOtro" placeholder="¿Qué gasto es?" style="display:none;margin-top:8px">'
+    +'<span class="lbl">Monto</span><div class="pricebox"><input class="money num" id="gMonto" inputmode="none" value="" placeholder="0"></div>'
+    +'<div class="keypad">'+['1','2','3','4','5','6','7','8','9','000','0','del'].map(function(k){return k==='del'?'<button type="button" class="fn" data-k="del" aria-label="Borrar">'+icon('left')+'</button>':'<button type="button" data-k="'+k+'">'+k+'</button>'}).join('')+'</div>';
+  openSheet(sheetFrame('Nuevo gasto',fechaCorta(hoyIso()),body,'<button type="button" class="btn pri" id="gOk">'+icon('check')+'Guardar gasto</button>'));
+  function pintar(){$$('#gConc [data-c]').forEach(function(b){b.classList.toggle('on',b.getAttribute('data-c')===G.concepto||(G.concepto&&conceptos.indexOf(G.concepto)<0&&b.getAttribute('data-c')==='Otro'))});$('#gMonto').value=G.monto?money(G.monto).slice(1):''}
+  $$('[data-rec]').forEach(function(b){b.onclick=function(){var g=rec[+b.getAttribute('data-rec')];db.gastos.push({id:uid(),fecha:hoyIso(),concepto:g.concepto,monto:g.monto});save();closeSheet();refrescar();toast('Gasto: '+esc(g.concepto)+' '+money(g.monto),{label:'Deshacer',fn:function(){db.gastos.pop();save();refrescar()}})}});
+  $$('#gConc [data-c]').forEach(function(b){b.onclick=function(){var c=b.getAttribute('data-c');var o=$('#gOtro');if(c==='Otro'){o.style.display='block';o.focus();G.concepto=o.value||''}else{o.style.display='none';G.concepto=c}pintar()}});
+  $('#gOtro').oninput=function(){G.concepto=this.value};
+  $$('#sheet [data-k]').forEach(function(b){b.onclick=function(){var k=b.getAttribute('data-k'),d=String(G.monto||'');if(k==='del')d=d.slice(0,-1);else if(d.length<9)d+=k;G.monto=+d||0;pintar()}});
+  $('#gMonto').oninput=function(){G.monto=+digitsOf(this.value)||0};
+  $('#gOk').onclick=function(){if(!G.concepto){$('#gConc').classList.add('shake');setTimeout(function(){$('#gConc').classList.remove('shake')},300);return}if(!G.monto){$('#gMonto').classList.add('shake');setTimeout(function(){$('#gMonto').classList.remove('shake')},300);return}
+    db.gastos.push({id:uid(),fecha:hoyIso(),concepto:G.concepto,monto:G.monto});save();closeSheet();refrescar();toast('Gasto anotado: '+esc(G.concepto)+' '+money(G.monto))};
+}
+
+// ---------- PRODUCTO (alta / edición) ----------
+function sheetProducto(id){
+  var p=id?prodById(id):null,P=p?{nombre:p.nombre,precio:p.precio,stock:p.stock,min:p.min}:{nombre:'',precio:0,stock:0,min:2};
+  function stepper(k,lbl){return '<span class="lbl">'+lbl+'</span><div class="timebar"><button type="button" class="st" data-s="'+k+'" data-d="-1">'+icon('minus')+'</button><input class="t num" data-f="'+k+'" inputmode="numeric" value="'+P[k]+'"><button type="button" class="st" data-s="'+k+'" data-d="1">'+icon('plus')+'</button></div>'}
+  var body='<span class="lbl">Nombre</span><input class="field" id="pNombre" value="'+esc(P.nombre)+'" placeholder="Ej.: Pomada mate" data-af>'
+    +'<span class="lbl">Precio de venta</span><input class="field num" id="pPrecio" inputmode="numeric" value="'+(P.precio||'')+'" placeholder="14000">'
+    +stepper('stock','Stock actual')+stepper('min','Avisar cuando queden');
+  openSheet(sheetFrame(p?'Editar producto':'Nuevo producto','',body,(p?'<button type="button" class="btn ghost danger" id="pDel" style="flex:0 0 auto">'+icon('trash')+'</button>':'')+'<button type="button" class="btn pri" id="pOk">'+icon('check')+'Guardar</button>'));
+  $$('#sheet [data-s]').forEach(function(b){b.onclick=function(){var k=b.getAttribute('data-s');P[k]=Math.max(0,P[k]+(+b.getAttribute('data-d')));$('#sheet [data-f="'+k+'"]').value=P[k]}});
+  $$('#sheet [data-f]').forEach(function(i){i.oninput=function(){P[i.getAttribute('data-f')]=Math.max(0,+digitsOf(i.value)||0)}});
+  $('#pOk').onclick=function(){var n=$('#pNombre').value.trim();if(!n){$('#pNombre').focus();return}var pr=+digitsOf($('#pPrecio').value)||0;
+    if(p){p.nombre=n;p.precio=pr;p.stock=P.stock;p.min=P.min}else db.productos.push({id:uid(),nombre:n,precio:pr,stock:P.stock,min:P.min});
+    save();closeSheet();refrescar();toast('Producto guardado')};
+  if(p)$('#pDel').onclick=function(){db.productos=db.productos.filter(function(x){return x.id!==id});save();closeSheet();refrescar();toast('Producto borrado',{label:'Deshacer',fn:function(){db.productos.push(p);save();refrescar()}})};
+}
+function venderProducto(id,pago){
+  var p=prodById(id);if(!p||p.stock<=0)return;
+  pago=pago||'efectivo';p.stock--;var v={id:uid(),fecha:hoyIso(),hora:hm(ahoraMin()),prodId:p.id,nombre:p.nombre,precio:p.precio,cant:1,pago:pago,turnoId:null,cliente:''};
+  db.ventas.push(v);save();refrescar();vibrar(10);
+  var otro=pago==='efectivo'?'transferencia':'efectivo';
+  toast('Vendido: '+esc(p.nombre)+' '+money(p.precio)+' · '+pago,{label:'Fue por '+otro,fn:function(){v.pago=otro;save();refrescar();toast('Listo: '+otro)}});
+}
+function reponerProducto(id,n){var p=prodById(id);if(!p)return;p.stock+=n;save();refrescar();toast(esc(p.nombre)+': quedan '+p.stock)}
+
+// ---------- SERVICIOS Y PRECIOS ----------
+function sheetServicios(despues){
+  var S=db.servicios.map(function(s){return {n:s.n,p:s.p,dur:s.dur||30}});
+  function pintar(){
+    $('#svcList').innerHTML=S.map(function(s,i){return '<div class="li"><input class="field" style="height:44px;font-size:15px" data-sn="'+i+'" value="'+esc(s.n)+'" placeholder="Servicio"><input class="field num" style="height:44px;width:110px;flex:none;font-size:15px" inputmode="numeric" data-sp="'+i+'" value="'+s.p+'"><button type="button" class="del" data-sd="'+i+'" aria-label="Quitar">'+icon('x')+'</button></div>'}).join('');
+    $$('#svcList [data-sn]').forEach(function(i){i.oninput=function(){S[+i.getAttribute('data-sn')].n=i.value}});
+    $$('#svcList [data-sp]').forEach(function(i){i.oninput=function(){S[+i.getAttribute('data-sp')].p=+digitsOf(i.value)||0}});
+    $$('#svcList [data-sd]').forEach(function(b){b.onclick=function(){S.splice(+b.getAttribute('data-sd'),1);pintar()}});
+  }
+  openSheet(sheetFrame('Servicios y precios','Se escriben una vez y quedan',"<div class='list' id='svcList'></div><button type='button' class='btn sm ghost full' id='svcAdd' style='margin-top:10px'>"+icon('plus')+"Agregar servicio</button>",'<button type="button" class="btn pri" id="svcOk">'+icon('check')+'Guardar precios</button>'));
+  pintar();
+  $('#svcAdd').onclick=function(){S.push({n:'',p:0,dur:30});pintar();var l=$$('#svcList [data-sn]');l[l.length-1].focus()};
+  $('#svcOk').onclick=function(){db.servicios=S.filter(function(s){return s.n.trim()}).map(function(s){return {n:s.n.trim(),p:s.p,dur:s.dur}});if(!db.servicios.length)db.servicios=[{n:'Corte',p:18000,dur:30}];save();closeSheet();if(despues)despues();else refrescar();toast('Precios guardados')};
+}
+
+// ---------- AJUSTES / MÁS ----------
+function sheetMore(){
+  var th=getTheme();
+  var body='<div class="setrow"><span>Tema</span><div class="seg" style="width:230px"><button type="button" data-th="auto"'+(th==='auto'?' class="on"':'')+'>Auto</button><button type="button" data-th="light"'+(th==='light'?' class="on"':'')+'>Claro</button><button type="button" data-th="dark"'+(th==='dark'?' class="on"':'')+'>Oscuro</button></div></div>'
+    +'<div class="setrow"><span>Servicios y precios</span><button type="button" class="btn sm" id="mSvc">'+icon('edit')+'Editar</button></div>'
+    +'<div class="setrow"><span>Exportar a planilla<br><small class="mut">CSV, se abre en Excel o Google Sheets</small></span><div style="display:flex;gap:6px"><button type="button" class="btn sm" id="mExpC">'+icon('down')+'Clientes</button><button type="button" class="btn sm" id="mExpK">'+icon('down')+'Caja</button></div></div>'
+    +'<div class="setrow"><span>Datos de demo<br><small class="mut">Clientes inventados. Se guardan en este navegador.</small></span><button type="button" class="btn sm ghost danger" id="mReset">'+icon('reset')+'Reiniciar demo</button></div>'
+    +'<div class="setrow mut" style="font-size:12px">Samurai Barber · gestión interna. Las reservas online entran solas a la agenda cuando esté conectado el sistema de turnos (hoy están simuladas).</div>';
+  openSheet(sheetFrame('Ajustes','',body,''));
+  $$('#sheet [data-th]').forEach(function(b){b.onclick=function(){setTheme(b.getAttribute('data-th'));$$('#sheet [data-th]').forEach(function(x){x.classList.toggle('on',x===b)})}});
+  $('#mSvc').onclick=function(){sheetServicios()};
+  $('#mExpC').onclick=function(){exportarClientes();toast('Planilla de clientes descargada')};
+  $('#mExpK').onclick=function(){exportarCaja();toast('Planilla de caja descargada')};
+  $('#mReset').onclick=function(){if(confirm('¿Volver a los datos de demo? Se pierde lo que cargaste.')){resetDemo();prevVals={};closeSheet();ui.fecha=hoyIso();refrescar();toast('Demo reiniciada')}};
+}
+</script>

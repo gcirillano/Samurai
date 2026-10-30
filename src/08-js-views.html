@@ -1,0 +1,176 @@
+<script>
+/* =====================================================================
+   JS · PARTE 4: vistas Semana, Clientes, Caja, Productos · navegación · inicio
+   ===================================================================== */
+
+// ---------- SEMANA (los días lado a lado, como la hoja de Augusto) ----------
+function renderSemana(){
+  var lun=ui.semana,hoy=hoyIso(),ts=totalesSemana(lun),prev=totalesSemana(addDays(lun,-7));
+  var fact=ts.cobrado+ts.propinas+ts.productos,factPrev=prev.cobrado+prev.propinas+prev.productos;
+  var diasCon=ts.dias.filter(function(d){return d.cortes>0}).length,delta=factPrev?Math.round((fact-factPrev)/factPrev*100):null;
+  var maxTot=1;ts.dias.forEach(function(d){maxTot=Math.max(maxTot,d.cobrado+d.propinas+d.productos)});
+  var esta=iso(lun)===iso(lunesDe(new Date()));
+  var h='<div class="vhead"><h2>Semana<span class="sub">'+fechaCorta(iso(lun)).slice(4)+' – '+fechaCorta(iso(addDays(lun,6))).slice(4)+(esta?' · esta semana':'')+'</span></h2><div class="ctl"><button type="button" class="ibtn" id="swPrev" aria-label="Semana anterior">'+icon('left')+'</button>'+(esta?'':'<button type="button" class="pill" id="swHoy">Esta semana</button>')+'<button type="button" class="ibtn" id="swNext" aria-label="Semana siguiente">'+icon('right')+'</button></div></div>';
+  h+='<div class="week-sum"><div class="stat ok"><small>Facturado</small><b class="num" data-cnt="wfact" data-to="'+fact+'" data-fmt="money">'+money(fact)+'</b></div><div class="stat"><small>Cortes</small><b data-cnt="wcortes" data-to="'+ts.cortes+'">'+ts.cortes+'</b></div><div class="stat"><small>Promedio por día</small><b class="num">'+money(diasCon?fact/diasCon:0)+'</b></div><div class="stat"><small>vs. semana anterior</small><b class="'+(delta==null?'':delta>=0?'delta up':'delta down')+'">'+(delta==null?'—':(delta>=0?'+':'')+delta+'%')+'</b></div></div>';
+  h+='<div class="wgrid">';
+  for(var i=0;i<7;i++){var d=addDays(lun,i),f=iso(d),tl=turnosDe(f),tot=ts.dias[i],fd=tot.cobrado+tot.propinas+tot.productos,oc=ocupacionDia(f);
+    h+='<div class="wday'+(f===hoy?' today':'')+'"><button type="button" class="dh" data-f="'+f+'"><small>'+DIAS[d.getDay()]+'</small><b>'+d.getDate()+' '+MESES_C[d.getMonth()]+'</b><span class="tot'+(fd?'':' zero')+'">'+(fd?money(fd):(tl.length?money(tot.porCobrar)+' a cobrar':'libre'))+'</span></button>';
+    h+='<div class="bar"><i style="width:'+Math.round(fd/maxTot*100)+'%"></i></div><div class="heat" title="Ocupación por hora">'+oc.map(function(m){return '<i class="'+(m>=45?'h3':m>=25?'h2':m>0?'h1':'')+'"></i>'}).join('')+'</div><div class="heat-lbl"><span>10h</span><span>15h</span><span>20h</span></div>';
+    h+='<div class="wlist">'+tl.map(function(t){return '<button type="button" class="wt '+t.estado+'" data-open="'+t.id+'"><span class="h">'+t.hora+'</span><span class="n">'+esc(t.nombre)+'</span><span class="p">'+(t.estado==='nocame'?'—':money(t.precio).replace('.000','k'))+'</span></button>'}).join('')+(tl.length?'':'<div class="wfree">Sin turnos</div>')+'</div>';
+    h+='<button type="button" class="add" data-add="'+f+'">'+icon('plus')+' turno</button></div>';
+  }
+  h+='</div>';
+  var v=$('#v-semana');v.innerHTML=h;
+  $('#swPrev').onclick=function(){ui.semana=addDays(ui.semana,-7);renderSemana()};
+  $('#swNext').onclick=function(){ui.semana=addDays(ui.semana,7);renderSemana()};
+  var sh=$('#swHoy');if(sh)sh.onclick=function(){ui.semana=lunesDe(new Date());renderSemana()};
+  $$('.dh',v).forEach(function(b){b.onclick=function(){ui.fecha=b.getAttribute('data-f');ui.scrolledToNow=false;setView('hoy')}});
+  $$('[data-open]',v).forEach(function(b){b.onclick=function(){sheetAlta({id:b.getAttribute('data-open')})}});
+  $$('[data-add]',v).forEach(function(b){b.onclick=function(){var f=b.getAttribute('data-add');sheetAlta({fecha:f,hora:sugerirHora(f)})}});
+  animarContadores(v);
+}
+
+// ---------- CLIENTES ----------
+function renderClientes(){
+  var all=listaClientes().filter(function(c){return c.n||c.futuros.length||c.hoy.length||c.faltas.length}),q=ui.q.trim().toLowerCase();
+  var late=all.filter(function(c){return c.estado==='late'}).length,due=all.filter(function(c){return c.estado==='due'}).length;
+  var l=all.filter(function(c){return !q||c.nombre.toLowerCase().indexOf(q)>=0});
+  var s=ui.sortCli;
+  if(s==='frecuentes')l.sort(function(a,b){if(b.n!==a.n)return b.n-a.n;var fa=a.ultima?a.ultima.fecha:'',fb=b.ultima?b.ultima.fecha:'';return fb>fa?1:fb<fa?-1:0});
+  else if(s==='recuperar'){var rank={late:0,due:1,ok:2,nuevo:3};l=l.filter(function(c){return c.n>0});l.sort(function(a,b){return rank[a.estado]-rank[b.estado]||(b.atraso||0)-(a.atraso||0)})}
+  else if(s==='recientes')l.sort(function(a,b){var fa=a.ultima?a.ultima.fecha:'',fb=b.ultima?b.ultima.fecha:'';return fb>fa?1:fb<fa?-1:0});
+  else l.sort(function(a,b){return a.nombre.localeCompare(b.nombre,'es')});
+  var h='<div class="vhead"><h2>Clientes<span class="sub">'+all.length+' fichas armadas solas con los turnos</span></h2><button type="button" class="btn sm ghost" id="cExp">'+icon('down')+'Planilla</button></div>'
+    +'<div class="search">'+icon('search')+'<input class="field" id="cQ" placeholder="Buscar por nombre o apodo" value="'+esc(ui.q)+'" autocomplete="off"></div>'
+    +'<div class="sorts">'+[['frecuentes','Más frecuentes',''],['recuperar','A recuperar',late+due],['recientes','Recientes',''],['az','A–Z','']].map(function(x){return '<button type="button" data-sort="'+x[0]+'"'+(s===x[0]?' class="on"':'')+'>'+x[1]+(x[2]?'<span class="n">'+x[2]+'</span>':'')+'</button>'}).join('')+'</div>';
+  if(s==='recuperar')h+='<div class="hdr-note">'+late+' ya tendrían que haber vuelto · '+due+' les toca estos días. Tocá uno para mandarle un WhatsApp.</div>';
+  h+='<div class="clist">'+l.slice(0,120).map(function(c,i){
+    var st,sc=c.estado;
+    if(c.estado==='nuevo')st='Nuevo<small>'+(c.futuros.length||c.hoy.length?'tiene turno':'sin visitas')+'</small>';
+    else if(c.estado==='late')st='Debería haber vuelto<small>hace '+c.atraso+' días</small>';
+    else if(c.estado==='due')st=(c.atraso>0?'Le toca<small>desde hace '+c.atraso+' d</small>':'Le toca<small>'+(c.atraso===0?'hoy':'en '+(-c.atraso)+' días')+'</small>');
+    else st='Al día<small>'+(c.ultima?haceDias(c.desde):'')+'</small>';
+    var fill=c.ritmo?Math.min(1,c.desde/c.ritmo):0;
+    return '<button type="button" class="cli" data-n="'+esc(c.nombre)+'" style="animation-delay:'+Math.min(i*20,300)+'ms">'+avatar(c.nombre)+'<span class="tx"><span class="nm">'+esc(c.nombre)+(c.reincidente?'<span class="tag warn">'+icon('warn')+c.faltas.length+' faltas</span>':'')+(c.futuros.length?'<span class="tag online">turno '+fechaCorta(c.futuros[0].fecha)+'</span>':'')+'</span><span class="sv">'+(c.n?c.n+' visita'+(c.n===1?'':'s')+(c.ritmo?' · cada ~'+c.ritmo+' d':'')+' · '+esc(c.servHab)+' '+money(c.precioHab):'Sin visitas todavía')+'</span></span><span class="st '+sc+'">'+st+'</span><span class="ring '+sc+'"><i style="height:'+Math.round(fill*100)+'%"></i></span></button>'}).join('')+(l.length?'':'<div class="empty">'+icon('clientes')+'No hay nadie con ese nombre. Al anotar un turno se crea solo.</div>')+'</div>';
+  var v=$('#v-clientes');v.innerHTML=h;
+  var inp=$('#cQ');inp.oninput=function(){ui.q=inp.value;var pos=inp.selectionStart;renderClientes();var i2=$('#cQ');i2.focus();try{i2.setSelectionRange(pos,pos)}catch(e){}};
+  $$('[data-sort]',v).forEach(function(b){b.onclick=function(){ui.sortCli=b.getAttribute('data-sort');renderClientes()}});
+  $$('.cli',v).forEach(function(b){b.onclick=function(){sheetFicha(b.getAttribute('data-n'))}});
+  $('#cExp').onclick=function(){exportarClientes();toast('Planilla de clientes descargada')};
+}
+
+// ---------- CAJA ----------
+function renderCaja(){
+  var hoy=hoyIso(),dia=ui.cajaPeriodo==='dia';
+  var lun=ui.semana,T=dia?totalesDia(hoy):totalesSemana(lun),P=dia?totalesDia(iso(addDays(new Date(),-7))):totalesSemana(addDays(lun,-7));
+  var ingresos=T.cobrado+T.propinas+T.productos,ingPrev=P.cobrado+P.propinas+P.productos,delta=ingPrev?Math.round((ingresos-ingPrev)/ingPrev*100):null;
+  var desde=dia?hoy:iso(lun),hasta=dia?hoy:iso(addDays(lun,6));
+  var gastos=db.gastos.filter(function(g){return g.fecha>=desde&&g.fecha<=hasta}).sort(function(a,b){return a.fecha<b.fecha?1:-1});
+  var ventas=db.ventas.filter(function(v){return v.fecha>=desde&&v.fecha<=hasta}).sort(function(a,b){return (a.fecha+a.hora)<(b.fecha+b.hora)?1:-1});
+  var maxPay=Math.max(1,T.efectivo,T.transferencia);
+  var h='<div class="vhead"><h2>Caja<span class="sub">'+(dia?fechaLarga(hoy):'semana '+fechaCorta(iso(lun)).slice(4)+' – '+fechaCorta(iso(addDays(lun,6))).slice(4))+'</span></h2>'
+    +'<div class="ctl"><div class="seg" style="width:170px"><button type="button" data-per="dia"'+(dia?' class="on"':'')+'>Hoy</button><button type="button" data-per="semana"'+(!dia?' class="on"':'')+'>Semana</button></div>'
+    +(dia?'':'<button type="button" class="ibtn" id="kPrev" aria-label="Semana anterior">'+icon('left')+'</button><button type="button" class="ibtn" id="kNext" aria-label="Semana siguiente">'+icon('right')+'</button>')+'</div></div>';
+  h+='<div class="caja-grid">';
+  h+='<div class="card"><h3>Balance'+(delta!=null?'<span class="delta '+(delta>=0?'up':'down')+'" style="margin-left:auto">'+(delta>=0?'+':'')+delta+'% vs. '+(dia?'hace una semana':'semana anterior')+'</span>':'')+'</h3><div class="bal"><div class="in"><small>Ingresos</small><b class="num" data-cnt="kin" data-to="'+ingresos+'" data-fmt="money">'+money(ingresos)+'</b></div><div class="out"><small>Gastos</small><b class="num" data-cnt="kout" data-to="'+T.gastos+'" data-fmt="money">'+money(T.gastos)+'</b></div><div><small>Queda</small><b class="num" data-cnt="kbal" data-to="'+(ingresos-T.gastos)+'" data-fmt="money">'+money(ingresos-T.gastos)+'</b></div></div>'
+    +'<div class="hbar" style="margin-top:10px"><span class="l">Efectivo</span><span class="b"><i style="width:'+Math.round(T.efectivo/maxPay*100)+'%"></i></span><span class="v">'+money(T.efectivo)+'</span></div>'
+    +'<div class="hbar"><span class="l">Transferencia</span><span class="b"><i class="tr" style="width:'+Math.round(T.transferencia/maxPay*100)+'%"></i></span><span class="v">'+money(T.transferencia)+'</span></div>'
+    +'<div class="hbar"><span class="l">Cortes</span><span class="b"><i style="width:'+Math.round(T.cobrado/Math.max(1,ingresos)*100)+'%"></i></span><span class="v">'+T.cortes+' · '+money(T.cobrado)+'</span></div>'
+    +'<div class="hbar"><span class="l">Productos</span><span class="b"><i class="gold" style="width:'+Math.round(T.productos/Math.max(1,ingresos)*100)+'%"></i></span><span class="v">'+money(T.productos)+'</span></div>'
+    +'<div class="hbar"><span class="l">Propinas</span><span class="b"><i class="gold" style="width:'+Math.round(T.propinas/Math.max(1,ingresos)*100)+'%"></i></span><span class="v">'+money(T.propinas)+'</span></div>'
+    +(T.porCobrar?'<div class="hbar"><span class="l">Por cobrar</span><span class="b"><i class="red" style="width:'+Math.round(T.porCobrar/Math.max(1,ingresos+T.porCobrar)*100)+'%"></i></span><span class="v" style="color:var(--silla)">'+money(T.porCobrar)+'</span></div>':'')+'</div>';
+  // comparación con la semana anterior (SVG a mano)
+  var W=dia?totalesSemana(lunesDe(new Date())):T,WP=dia?totalesSemana(addDays(lunesDe(new Date()),-7)):P;
+  h+='<div class="card"><h3>Esta semana vs. la anterior, por día</h3>'+chartSemanas(W,WP)+'<div class="legend"><span><i style="background:var(--red)"></i>esta semana</span><span><i style="background:var(--line2)"></i>semana anterior</span></div></div>';
+  // gastos
+  h+='<div class="card"><h3>Gastos <span class="r"></span><button type="button" class="btn sm" id="kGasto" style="margin-left:auto">'+icon('plus')+'Gasto</button></h3><div class="list">'+(gastos.map(function(g){return '<div class="li"><span class="ic">'+icon('caja')+'</span><span class="tx"><b>'+esc(g.concepto)+'</b><small>'+fechaCorta(g.fecha)+'</small></span><span class="v out">−'+money(g.monto)+'</span><button type="button" class="del" data-gdel="'+g.id+'" aria-label="Borrar gasto">'+icon('trash')+'</button></div>'}).join('')||'<div class="mut" style="padding:6px 0;font-size:14px">Sin gastos '+(dia?'hoy':'esta semana')+'. Tocá "+ Gasto": concepto y monto, nada más.</div>')+'</div></div>';
+  // ventas de productos
+  h+='<div class="card"><h3>Productos vendidos<span class="r">'+money(T.productos)+'</span></h3><div class="list">'+(ventas.slice(0,12).map(function(v){return '<div class="li"><span class="ic">'+icon('prod')+'</span><span class="tx"><b>'+esc(v.nombre)+(v.cant>1?' ×'+v.cant:'')+'</b><small>'+fechaCorta(v.fecha)+' '+v.hora+(v.cliente?' · '+esc(v.cliente):'')+' · '+v.pago+'</small></span><span class="v">'+money(v.precio*v.cant)+'</span></div>'}).join('')||'<div class="mut" style="padding:6px 0;font-size:14px">Nada vendido '+(dia?'hoy':'esta semana')+'. Se vende desde el turno o desde Productos.</div>')+'</div>'
+    +'<div class="actions-row"><button type="button" class="btn sm ghost" id="kExp">'+icon('down')+'Exportar caja a planilla</button></div></div>';
+  h+='</div>';
+  var v=$('#v-caja');v.innerHTML=h;
+  $$('[data-per]',v).forEach(function(b){b.onclick=function(){ui.cajaPeriodo=b.getAttribute('data-per');renderCaja()}});
+  var kp=$('#kPrev');if(kp){kp.onclick=function(){ui.semana=addDays(ui.semana,-7);renderCaja()};$('#kNext').onclick=function(){ui.semana=addDays(ui.semana,7);renderCaja()}}
+  $('#kGasto').onclick=sheetGasto;
+  $('#kExp').onclick=function(){exportarCaja();toast('Planilla de caja descargada')};
+  $$('[data-gdel]',v).forEach(function(b){b.onclick=function(){var id=b.getAttribute('data-gdel'),g=db.gastos.filter(function(x){return x.id===id})[0];db.gastos=db.gastos.filter(function(x){return x.id!==id});save();renderCaja();toast('Gasto borrado',{label:'Deshacer',fn:function(){db.gastos.push(g);save();renderCaja()}})}});
+  animarContadores(v);
+}
+function chartSemanas(W,WP){
+  var w=640,hh=210,padL=44,padR=8,padT=14,padB=28,cw=(w-padL-padR)/7,max=1;
+  var a=W.dias.map(function(d){return d.cobrado+d.propinas+d.productos}),b=WP.dias.map(function(d){return d.cobrado+d.propinas+d.productos});
+  a.concat(b).forEach(function(x){max=Math.max(max,x)});max=Math.ceil(max/50000)*50000||50000;
+  var s='<svg class="chart" viewBox="0 0 '+w+' '+hh+'" role="img" aria-label="Facturación por día, esta semana y la anterior">';
+  for(var i=0;i<=2;i++){var val=max*i/2,y=padT+(hh-padT-padB)*(1-i/2);s+='<line class="axis" x1="'+padL+'" x2="'+(w-padR)+'" y1="'+y+'" y2="'+y+'" stroke-dasharray="3 4"/><text x="'+(padL-6)+'" y="'+(y+4)+'" text-anchor="end">'+(val>=1000?Math.round(val/1000)+'k':val)+'</text>'}
+  for(var d=0;d<7;d++){var x0=padL+d*cw,bw=Math.min(22,cw*.3),gap=4;
+    var ha=(hh-padT-padB)*a[d]/max,hb=(hh-padT-padB)*b[d]/max,base=hh-padB;
+    s+='<rect class="bar-prev" x="'+(x0+cw/2-bw-gap/2)+'" y="'+(base-hb)+'" width="'+bw+'" height="'+hb+'" rx="3"><title>Semana anterior: '+money(b[d])+'</title></rect>';
+    s+='<rect class="bar-now" x="'+(x0+cw/2+gap/2)+'" y="'+(base-ha)+'" width="'+bw+'" height="'+ha+'" rx="3"><title>Esta semana: '+money(a[d])+'</title></rect>';
+    s+='<text x="'+(x0+cw/2)+'" y="'+(hh-8)+'" text-anchor="middle">'+DIAS_C[(d+1)%7]+'</text>';
+  }
+  return s+'</svg>';
+}
+
+// ---------- PRODUCTOS ----------
+function renderProductos(){
+  var ps=db.productos.slice().sort(function(a,b){var la=a.stock<=a.min?0:1,lb=b.stock<=b.min?0:1;return la-lb||a.nombre.localeCompare(b.nombre,'es')});
+  var low=ps.filter(function(p){return p.stock<=p.min}).length,hoy=hoyIso();
+  var vh=db.ventas.filter(function(v){return v.fecha===hoy}).reduce(function(s,v){return s+v.precio*v.cant},0);
+  var h='<div class="vhead"><h2>Productos<span class="sub">'+(low?low+' por reponer · ':'')+'vendido hoy '+money(vh)+'</span></h2><button type="button" class="btn sm" id="pNuevo">'+icon('plus')+'Producto</button></div>';
+  h+='<div class="pgrid">'+ps.map(function(p,i){var cls=p.stock<=0?'out':p.stock<=p.min?'low':'',pct=Math.round(Math.min(1,p.stock/Math.max(1,p.min*3))*100);
+    return '<div class="prod '+cls+'" style="animation-delay:'+Math.min(i*30,240)+'ms"><div class="ph"><div class="tx"><span class="nm">'+esc(p.nombre)+'</span><span class="pr">'+money(p.precio)+' · avisar con '+p.min+'</span></div><div class="stock"><b>'+p.stock+'</b><small>en stock</small></div></div>'
+      +'<div class="lvl"><i style="width:'+pct+'%"></i></div>'
+      +(cls==='out'?'<span class="alert">'+icon('warn')+'Sin stock: hay que reponer</span>':cls==='low'?'<span class="alert">'+icon('warn')+'Se está acabando</span>':'<span class="alert" style="color:var(--mut);font-weight:500">Stock bien</span>')
+      +'<div class="pa"><button type="button" class="btn ok" data-sell="'+p.id+'"'+(p.stock<=0?' disabled':'')+'>'+icon('cash')+'Vender</button><button type="button" class="btn rep" data-rep="'+p.id+'" aria-label="Reponer una unidad">'+icon('plus')+'1</button><button type="button" class="btn rep" data-rep5="'+p.id+'" aria-label="Reponer cinco unidades">'+icon('plus')+'5</button>'
+      +'<button type="button" class="btn ghost ed" data-pedit="'+p.id+'" aria-label="Editar producto">'+icon('edit')+'</button></div></div>'}).join('')+'</div>';
+  var v=$('#v-productos');v.innerHTML=h;
+  $('#pNuevo').onclick=function(){sheetProducto()};
+  $$('[data-sell]',v).forEach(function(b){b.onclick=function(){venderProducto(b.getAttribute('data-sell'))}});
+  $$('[data-rep]',v).forEach(function(b){b.onclick=function(){reponerProducto(b.getAttribute('data-rep'),1)}});
+  $$('[data-rep5]',v).forEach(function(b){b.onclick=function(){reponerProducto(b.getAttribute('data-rep5'),5)}});
+  $$('[data-pedit]',v).forEach(function(b){b.onclick=function(){sheetProducto(b.getAttribute('data-pedit'))}});
+}
+
+// ---------- NAVEGACIÓN, TEMA, INICIO ----------
+var VIEWS=[{id:'hoy',l:'Hoy',i:'hoy'},{id:'semana',l:'Semana',i:'semana'},{id:'clientes',l:'Clientes',i:'clientes'},{id:'caja',l:'Caja',i:'caja'},{id:'productos',l:'Productos',i:'prod'}];
+function badges(){
+  var low=db.productos.filter(function(p){return p.stock<=p.min}).length;
+  var onl=turnosDe(hoyIso()).filter(function(t){return t.estado==='reservado'}).length;
+  return {productos:low,hoy:onl};
+}
+function renderNav(){
+  var b=badges();
+  var mk=function(){return VIEWS.map(function(v){var n=b[v.id]||0;return '<button type="button" data-view="'+v.id+'"'+(ui.view===v.id?' class="on"':'')+' aria-label="'+v.l+'">'+icon(v.i)+'<span>'+v.l+'</span>'+(n?'<span class="badge">'+n+'</span>':'')+'</button>'}).join('')};
+  $('#bottomnav').innerHTML=mk();$('#sidenav').innerHTML=mk();
+  $$('[data-view]').forEach(function(x){x.onclick=function(){setView(x.getAttribute('data-view'))}});
+}
+function setView(id){
+  ui.view=id;$$('.view').forEach(function(v){v.classList.toggle('on',v.id==='v-'+id)});
+  try{history.replaceState(null,'','#'+id)}catch(e){}
+  renderNav();
+  if(id==='hoy')renderHoy();else{window.scrollTo(0,0);if(id==='semana'){ui.semana=lunesDe(fromIso(ui.fecha));renderSemana()}else if(id==='clientes')renderClientes();else if(id==='caja')renderCaja();else renderProductos();renderWeekstrip()}
+}
+function getTheme(){try{return localStorage.getItem('samurai-v2-theme')||'auto'}catch(e){return 'auto'}}
+function setTheme(t){
+  try{localStorage.setItem('samurai-v2-theme',t)}catch(e){}
+  var dark=t==='dark'||(t==='auto'&&window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches);
+  document.documentElement.setAttribute('data-theme',dark?'dark':'light');
+  var ic=dark?'sun':'moon';['themeBtn','themeBtnSide'].forEach(function(id){var b=$('#'+id);if(b){b.innerHTML=icon(ic)+(id==='themeBtnSide'?'<span>'+(dark?'Modo claro':'Modo oscuro')+'</span>':'')}});
+}
+function toggleTheme(){var dark=document.documentElement.getAttribute('data-theme')==='dark';setTheme(dark?'light':'dark')}
+function init(){
+  db=load();
+  if(!db){db=seedDemo();try{localStorage.setItem(DB_KEY,JSON.stringify(db))}catch(e){}}
+  else if(db.creado!==hoyIso()&&!db.modified){db=seedDemo();try{localStorage.setItem(DB_KEY,JSON.stringify(db))}catch(e){}}   // demo intacta: se regenera cada día para que "hoy" tenga turnos
+  setTheme(getTheme());
+  $('#themeBtn').onclick=toggleTheme;$('#themeBtnSide').onclick=toggleTheme;
+  $('#moreBtn').onclick=sheetMore;$('#exportBtn').onclick=sheetMore;
+  $('#resetBtnSide').onclick=function(){if(confirm('¿Volver a los datos de demo? Se pierde lo que cargaste.')){resetDemo();prevVals={};ui.fecha=hoyIso();refrescar();toast('Demo reiniciada')}};
+  if(window.matchMedia){try{window.matchMedia('(prefers-color-scheme: dark)').addListener(function(){if(getTheme()==='auto')setTheme('auto')})}catch(e){}}
+  var hash=(location.hash||'').replace('#','');
+  setView(VIEWS.some(function(v){return v.id===hash})?hash:'hoy');
+}
+init();
+</script>
+</body>
+</html>

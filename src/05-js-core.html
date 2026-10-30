@@ -1,0 +1,236 @@
+<script>
+/* =====================================================================
+   JS · PARTE 1: DATOS Y ESTADO
+   Modelo (db):
+     turnos:    [{id, fecha:'AAAA-MM-DD', hora:'HH:MM', dur:30|45|60, nombre, servicio, precio,
+                  pago:''|'efectivo'|'transferencia', estado:'reservado'|'confirmado'|'silla'|'cobrado'|'nocame',
+                  origen:'local'|'online', propina:0, nota:''}]
+     clientes:  { nombre: {tel:'', notas:''} }          (lo demás se deriva de los turnos)
+     gastos:    [{id, fecha, concepto, monto}]
+     productos: [{id, nombre, precio, stock, min}]
+     ventas:    [{id, fecha, hora, prodId, nombre, precio, cant, pago, turnoId, cliente}]
+     servicios: [{n, p, dur}]
+   ===================================================================== */
+'use strict';
+var DB_KEY='samurai-v2';
+var HORA_INI=10*60, HORA_FIN=20*60;              // grilla visible 10:00–20:00
+var SLOT_H=58;                                   // alto en px de 30 minutos (ver --slot en CSS)
+var DIAS=['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
+var DIAS_C=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+var MESES=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+var MESES_C=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+var ESTADOS={reservado:'Reserva online',confirmado:'Confirmado',silla:'En la silla',cobrado:'Cobrado',nocame:'Faltó'};
+var AV_COLORS=['#b3302b','#c2552a','#b8933f','#5b8a3c','#2a8a73','#2f7fb8','#4659c9','#7a4fc9','#b23f8f','#a0423f','#3b7f6d','#8a6b2b'];
+
+// ---------- utilidades ----------
+function pad(n){return (n<10?'0':'')+n}
+function iso(d){return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())}
+function fromIso(s){var p=s.split('-');return new Date(+p[0],+p[1]-1,+p[2])}
+function hoyIso(){return iso(new Date())}
+function addDays(d,n){var x=new Date(d.getTime());x.setDate(x.getDate()+n);return x}
+function diffDias(a,b){return Math.round((fromIso(b)-fromIso(a))/864e5)}   // b - a en días
+function lunesDe(d){var x=new Date(d.getTime());x.setHours(0,0,0,0);x.setDate(x.getDate()-((x.getDay()+6)%7));return x}
+function toMin(h){var p=h.split(':');return (+p[0])*60+(+p[1])}
+function hm(m){m=Math.max(0,Math.round(m));return pad(Math.floor(m/60)%24)+':'+pad(m%60)}
+function ahoraMin(){var d=new Date();return d.getHours()*60+d.getMinutes()}
+function money(n){n=Math.round(n||0);var s=String(Math.abs(n)).replace(/\B(?=(\d{3})+(?!\d))/g,'.');return (n<0?'-':'')+'$'+s}
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
+function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7)}
+function $(s,r){return (r||document).querySelector(s)}
+function $$(s,r){return Array.prototype.slice.call((r||document).querySelectorAll(s))}
+function fechaLarga(f){var d=fromIso(f);return DIAS[d.getDay()]+' '+d.getDate()+' de '+MESES[d.getMonth()]}
+function fechaCorta(f){var d=fromIso(f);return DIAS_C[d.getDay()]+' '+d.getDate()+' '+MESES_C[d.getMonth()]}
+function haceDias(n){if(n===0)return 'hoy';if(n===1)return 'ayer';if(n<7)return 'hace '+n+' días';if(n<30)return 'hace '+Math.round(n/7)+' sem';if(n<365)return 'hace '+Math.round(n/30)+' meses';return 'hace más de un año'}
+function icon(n,cls){return '<svg class="'+(cls||'')+'" aria-hidden="true"><use href="#i-'+n+'"/></svg>'}
+function hashStr(s){var h=0;for(var i=0;i<s.length;i++){h=(h*31+s.charCodeAt(i))|0}return Math.abs(h)}
+function avColor(n){return AV_COLORS[hashStr(n.toLowerCase())%AV_COLORS.length]}
+function iniciales(n){var w=n.replace(/\(.*?\)/g,'').trim().split(/\s+/).filter(Boolean);var s=(w[0]||'?').charAt(0);if(w[1])s+=w[1].charAt(0);return s.toUpperCase()}
+function avatar(n,cls){return '<span class="av '+(cls||'')+'" style="background:'+avColor(n)+'">'+esc(iniciales(n))+'</span>'}
+function byHora(a,b){return toMin(a.hora)-toMin(b.hora)}
+function byFechaHora(a,b){return a.fecha===b.fecha?byHora(a,b):(a.fecha<b.fecha?-1:1)}
+function vibrar(ms){try{if(navigator.vibrate)navigator.vibrate(ms)}catch(e){}}
+function mode(arr){var c={},best=null,bn=0;arr.forEach(function(v){c[v]=(c[v]||0)+1;if(c[v]>bn){bn=c[v];best=v}});return best}
+
+// ---------- estado y persistencia ----------
+var db=null, _cli=null;        // _cli: índice de clientes (cache, se invalida al guardar)
+function save(){db.modified=true;_cli=null;try{localStorage.setItem(DB_KEY,JSON.stringify(db))}catch(e){}}
+function load(){try{var r=localStorage.getItem(DB_KEY);if(r){var o=JSON.parse(r);if(o&&o.v===2)return o}}catch(e){}return null}
+function resetDemo(){db=seedDemo();_cli=null;try{localStorage.setItem(DB_KEY,JSON.stringify(db))}catch(e){}}
+function turnoById(id){for(var i=0;i<db.turnos.length;i++)if(db.turnos[i].id===id)return db.turnos[i];return null}
+function turnosDe(f){return db.turnos.filter(function(t){return t.fecha===f}).sort(byHora)}
+function ventasDe(f){return db.ventas.filter(function(v){return v.fecha===f})}
+function gastosDe(f){return db.gastos.filter(function(g){return g.fecha===f})}
+function prodById(id){for(var i=0;i<db.productos.length;i++)if(db.productos[i].id===id)return db.productos[i];return null}
+function nombreCanonico(n){ // si ya existe "Tomi", "tomi" se guarda como "Tomi"
+  n=n.trim().replace(/\s+/g,' ');var l=n.toLowerCase();
+  var ix=clientesIndex();for(var k in ix)if(k.toLowerCase()===l)return k;return n;
+}
+
+// ---------- clientes derivados ----------
+function clientesIndex(){
+  if(_cli)return _cli;
+  var m={};
+  db.turnos.forEach(function(t){(m[t.nombre]=m[t.nombre]||[]).push(t)});
+  _cli=m;return m;
+}
+// Ficha derivada de los turnos: visitas, ritmo, habituales, atraso.
+function statsCliente(nombre){
+  var ts=(clientesIndex()[nombre]||[]).slice().sort(byFechaHora), hoy=hoyIso();
+  var visitas=ts.filter(function(t){return t.estado==='cobrado'||(t.estado==='silla')});
+  var faltas=ts.filter(function(t){return t.estado==='nocame'});
+  var futuros=ts.filter(function(t){return t.fecha>hoy&&t.estado!=='nocame'});
+  var hoyT=ts.filter(function(t){return t.fecha===hoy&&t.estado!=='nocame'&&t.estado!=='cobrado'});
+  var n=visitas.length, ult=n?visitas[n-1]:null, prim=n?visitas[0]:null;
+  var gaps=[];for(var i=Math.max(1,n-6);i<n;i++){var g=diffDias(visitas[i-1].fecha,visitas[i].fecha);if(g>0)gaps.push(g)}
+  var ritmo=gaps.length?Math.round(gaps.reduce(function(a,b){return a+b},0)/gaps.length):null;
+  var ult5=visitas.slice(-5);
+  var precioHab=ult?ult.precio:0, servHab=ult5.length?mode(ult5.map(function(t){return t.servicio})):'', pagoHab=ult5.length?(mode(ult5.map(function(t){return t.pago}).filter(Boolean))||'efectivo'):'efectivo';
+  var total=visitas.reduce(function(s,t){return s+t.precio+(t.propina||0)},0);
+  var ventas=db.ventas.filter(function(v){return v.cliente===nombre});
+  total+=ventas.reduce(function(s,v){return s+v.precio*v.cant},0);
+  var desde=ult?diffDias(ult.fecha,hoy):null;
+  var atraso=(ritmo&&desde!=null)?desde-ritmo:null;   // >0: ya tendría que haber vuelto
+  var ext=db.clientes[nombre]||{};
+  var estado='nuevo';
+  if(n>=2&&ritmo){ if(atraso>7)estado='late'; else if(atraso>=-3)estado='due'; else estado='ok'; }
+  else if(n===1){ estado=desde>45?'late':'ok'; }
+  return {nombre:nombre,visitas:visitas,faltas:faltas,futuros:futuros,hoy:hoyT,n:n,ultima:ult,primera:prim,ritmo:ritmo,
+    precioHab:precioHab,servHab:servHab,pagoHab:pagoHab,total:total,ventas:ventas,desde:desde,atraso:atraso,estado:estado,
+    tel:ext.tel||'',notas:ext.notas||'',reincidente:faltas.length>=2,
+    proximaSugerida:(ult&&ritmo)?iso(addDays(fromIso(ult.fecha),ritmo)):null};
+}
+function listaClientes(){return Object.keys(clientesIndex()).map(statsCliente)}
+function sugerirClientes(q,max){
+  q=(q||'').trim().toLowerCase();
+  var l=listaClientes().filter(function(c){return c.n+c.futuros.length+c.hoy.length>0||c.faltas.length});
+  if(q)l=l.filter(function(c){return c.nombre.toLowerCase().indexOf(q)>=0});
+  l.sort(function(a,b){ // los que "tocan" volver primero, después los más frecuentes y recientes
+    var sa=(a.estado==='due'||a.estado==='late'?2:0)+(a.n>=4?1:0), sb=(b.estado==='due'||b.estado==='late'?2:0)+(b.n>=4?1:0);
+    if(q){var ia=a.nombre.toLowerCase().indexOf(q)===0?1:0, ib=b.nombre.toLowerCase().indexOf(q)===0?1:0;if(ia!==ib)return ib-ia}
+    if(sb!==sa)return sb-sa;
+    return (b.ultima?b.ultima.fecha:'')>(a.ultima?a.ultima.fecha:'')?1:-1;
+  });
+  return l.slice(0,max||8);
+}
+
+// ---------- totales ----------
+function totalesDia(f){
+  var ts=turnosDe(f), vs=ventasDe(f), gs=gastosDe(f);
+  var r={cobrado:0,propinas:0,porCobrar:0,cortes:0,efectivo:0,transferencia:0,productos:0,gastos:0,turnos:ts.length,faltas:0};
+  ts.forEach(function(t){
+    if(t.estado==='cobrado'){r.cobrado+=t.precio;r.propinas+=t.propina||0;r.cortes++;r[t.pago==='transferencia'?'transferencia':'efectivo']+=t.precio+(t.propina||0)}
+    else if(t.estado==='nocame')r.faltas++;
+    else r.porCobrar+=t.precio;
+  });
+  vs.forEach(function(v){r.productos+=v.precio*v.cant;r[v.pago==='transferencia'?'transferencia':'efectivo']+=v.precio*v.cant});
+  gs.forEach(function(g){r.gastos+=g.monto});
+  r.ingresos=r.cobrado+r.propinas+r.productos;r.balance=r.ingresos-r.gastos;
+  return r;
+}
+function totalesSemana(lunes){
+  var r={cobrado:0,propinas:0,porCobrar:0,cortes:0,efectivo:0,transferencia:0,productos:0,gastos:0,turnos:0,faltas:0,ingresos:0,balance:0,dias:[]};
+  for(var i=0;i<7;i++){var f=iso(addDays(lunes,i)),t=totalesDia(f);t.fecha=f;r.dias.push(t);for(var k in t)if(typeof t[k]==='number')r[k]+=t[k]}
+  return r;
+}
+// Ocupación por hora (minutos ocupados por franja de 60') para el mapa de calor
+function ocupacionDia(f){
+  var h=[];for(var i=0;i<10;i++)h.push(0);
+  turnosDe(f).forEach(function(t){if(t.estado==='nocame')return;var a=toMin(t.hora),b=a+(t.dur||30);
+    for(var i=0;i<10;i++){var ha=HORA_INI+i*60,hb=ha+60;var ov=Math.min(b,hb)-Math.max(a,ha);if(ov>0)h[i]+=ov}});
+  return h;
+}
+
+// ---------- exportar a planilla (CSV con ; para Excel en español) ----------
+function descargarCSV(nombre,filas){
+  var txt='﻿'+filas.map(function(r){return r.map(function(c){c=String(c==null?'':c);return /[;"\n]/.test(c)?'"'+c.replace(/"/g,'""')+'"':c}).join(';')}).join('\r\n');
+  var blob=new Blob([txt],{type:'text/csv;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');
+  a.href=url;a.download=nombre;document.body.appendChild(a);a.click();document.body.removeChild(a);setTimeout(function(){URL.revokeObjectURL(url)},1000);
+}
+function exportarClientes(){
+  var filas=[['Cliente','Visitas','Última visita','Viene cada (días)','Servicio habitual','Precio habitual','Total gastado','Faltas','Teléfono','Notas']];
+  listaClientes().sort(function(a,b){return b.n-a.n}).forEach(function(c){filas.push([c.nombre,c.n,c.ultima?c.ultima.fecha:'',c.ritmo||'',c.servHab,c.precioHab,c.total,c.faltas.length,c.tel,c.notas])});
+  descargarCSV('samurai-clientes-'+hoyIso()+'.csv',filas);
+}
+function exportarCaja(){
+  var filas=[['Fecha','Hora','Tipo','Detalle','Cliente','Monto','Forma de pago','Estado']];
+  db.turnos.slice().sort(byFechaHora).forEach(function(t){filas.push([t.fecha,t.hora,'Turno',t.servicio,t.nombre,t.precio+(t.propina||0),t.pago,ESTADOS[t.estado]])});
+  db.ventas.forEach(function(v){filas.push([v.fecha,v.hora,'Producto',v.nombre+(v.cant>1?' x'+v.cant:''),v.cliente||'',v.precio*v.cant,v.pago,'Vendido'])});
+  db.gastos.forEach(function(g){filas.push([g.fecha,'','Gasto',g.concepto,'',-g.monto,'',''])});
+  descargarCSV('samurai-caja-'+hoyIso()+'.csv',filas);
+}
+
+/* =====================================================================
+   DATOS DE DEMO · clientes inventados (ningún nombre es de una persona real)
+   Generador determinista (mulberry32) para que la demo sea siempre igual.
+   ===================================================================== */
+function seedDemo(){
+  var seed=20261030;function rnd(){seed|=0;seed=seed+0x6D2B79F5|0;var t=Math.imul(seed^seed>>>15,1|seed);t=t+Math.imul(t^t>>>7,61|t)^t;return ((t^t>>>14)>>>0)/4294967296}
+  function ri(a,b){return a+Math.floor(rnd()*(b-a+1))}
+  function pick(a){return a[Math.floor(rnd()*a.length)]}
+  var hoy=new Date();hoy.setHours(0,0,0,0);var hoyS=iso(hoy),nowM=ahoraMin();
+  var servicios=[{n:'Corte',p:18000,dur:30},{n:'Corte + barba',p:22000,dur:30},{n:'Niño',p:16500,dur:30},{n:'Barba',p:12000,dur:30},{n:'Premium',p:24000,dur:45},{n:'Dos personas',p:36000,dur:60}];
+  var nombres=['Tomi','Gian','Brai','Ema','Tío','Viejo','Fede (A)','Fede (B)','Lucho','Santi','Joaco','Agus','Maxi','Rama','Seba','Cholo','Negro','Turco','Facu','Mati','Nico','Lauti','Thiago','Benja','Juanma','Pipa','Rulo','Tano','Gordo','Chino','Dani (B)','Fran','Iván','Ale','Pablito','Colo','Nahue','Kevin','Marquitos','Lolo','Beto','Chule','Tute','Pato','Gonza','Leo','Rodri','Cris','Enzo','Nando','Tati','Polaco','Flaco','Ruso','Mono','Pepe','Tomás G.','Luca','Bauti','Vale','Ciro','Manu','Lucas R.','Ezequiel','Rafa','Diego','Martín','Nacho P.','Julián','Franco','Matías S.','Andy','Walter','Oscar','Lalo','Hugo','Tío Carlos','Alexis','Ramiro','Cande (hijo)','Pedrito','Emi','Jony','Ulises','Simón','Brian T.','Lisandro','Ramón','Damián','Axel','Gabi','Tiziano','Uriel','Mauro','Joel','Elías','Dylan','Nehuén','Federico M.',
+    'Agustín','Bruno','Camilo','Darío','Esteban','Fabián','Germán','Hernán','Ignacio','Jonathan','Kiko','Lucho (B)','Marcos','Nelson','Octavio','Pablo G.','Quique','Renzo','Sergio','Tobías','Valentín','Willy','Yamil','Zeta','Adrián','Braian','Cacho','Checho','Dante','Edu','Fito','Gastón','Horacio','Iñaqui','Jero','Lucas M.','Maxi (B)','Nico (B)','Orlando','Pancho','Ramita','Santi (B)','Tomi (B)','Vicente','Abel','Bautista R.','Claudio','Diego M.','Emanuel','Fermín','Gino','Hugo (hijo)','Isaías','Juanpi','Lalo (B)','Mariano','Nahuel S.','Otto','Pity','Rober','Sebi','Teo','Ulises (B)','Vitto','Yaco','Alan','Bebe','Coco','Dami','Ema (B)','Fran (B)','Guille','Juani','Lolo (B)','Mati (B)','Nacho','Pipi','Rodri (B)','Tomás','Agus (B)'];
+  var clientes=nombres.map(function(n,i){
+    var tipo=rnd();var gap=tipo<.5?ri(12,25):tipo<.85?ri(25,40):ri(45,75);
+    var sIdx=rnd()<.55?0:rnd()<.5?1:pick([2,3,4,5,0,1]);
+    return {n:n,gap:gap,s:sIdx,pago:rnd()<.62?'efectivo':'transferencia',hora:ri(HORA_INI,HORA_FIN-60),start:ri(5,11),
+      dropped:i%17===3,faltador:(i===6||i===23),propinero:rnd()<.12,semana:[1,2,3,4,5,6].filter(function(){return rnd()<.75})};
+  });
+  var turnos=[],ventas=[],gastos=[];
+  var prods=[{id:'p1',nombre:'Pomada mate',precio:14000,stock:6,min:3},{id:'p2',nombre:'Cera moldeadora',precio:12500,stock:4,min:3},{id:'p3',nombre:'Shampoo de barba',precio:11000,stock:2,min:3},{id:'p4',nombre:'Aceite de barba',precio:9500,stock:1,min:2},{id:'p5',nombre:'Polvo texturizador',precio:13000,stock:5,min:2},{id:'p6',nombre:'Gel fijación fuerte',precio:8000,stock:0,min:2},{id:'p7',nombre:'Peine de carbono',precio:4500,stock:7,min:3}];
+  var ocup={};
+  function libre(f,m,dur){var l=ocup[f]||[];for(var i=0;i<l.length;i++){if(m<l[i][1]&&m+dur>l[i][0])return false}return true}
+  function ocupar(f,m,dur){(ocup[f]=ocup[f]||[]).push([m,m+dur])}
+  function precioEn(s,f){var p=servicios[s].p;if(diffDias(f,hoyS)>35)p=Math.round(p*.92/500)*500;return p}
+  clientes.forEach(function(c){
+    var d=addDays(hoy,-(c.start*7+ri(0,6)));
+    var fin=c.dropped?addDays(hoy,-ri(40,70)):addDays(hoy,7);
+    while(d<=fin){
+      var dd=new Date(d.getTime());
+      if(dd.getDay()===0)dd=addDays(dd,rnd()<.5?-1:1);          // domingo cerrado: va al sábado o al lunes
+      if(c.semana.length&&c.semana.indexOf(dd.getDay())<0&&rnd()<.4)dd=addDays(dd,1);
+      if(dd.getDay()===0)dd=addDays(dd,1);
+      var f=iso(dd),dur=servicios[c.s].dur;
+      var m=Math.round((c.hora+ri(-60,60))/30)*30; if(rnd()<.08)m+=pick([10,15,20,40]);
+      m=Math.max(HORA_INI,Math.min(HORA_FIN-dur,m));
+      var ok=false;for(var k=0;k<5&&!ok;k++){if(libre(f,m,dur))ok=true;else m+=30;if(m+dur>HORA_FIN)break}
+      if(ok){
+        ocupar(f,m,dur);
+        var estado='cobrado',pago=rnd()<.9?c.pago:(c.pago==='efectivo'?'transferencia':'efectivo');
+        if(f>hoyS){estado='confirmado';pago=''}
+        else if(f===hoyS){ if(m+dur<=nowM-10)estado='cobrado'; else if(m<=nowM&&m+dur>nowM-10)estado='silla'; else estado='confirmado'; if(estado!=='cobrado')pago='' }
+        else if(c.faltador&&rnd()<.3)estado='nocame';
+        else if(rnd()<.025)estado='nocame';
+        if(estado==='nocame')pago='';
+        var t={id:'d'+turnos.length,fecha:f,hora:hm(m),dur:dur,nombre:c.n,servicio:servicios[c.s].n,precio:precioEn(c.s,f),pago:pago,estado:estado,origen:'local',propina:(estado==='cobrado'&&c.propinero&&rnd()<.5)?pick([1000,2000,2000,3000]):0,nota:''};
+        turnos.push(t);
+        if(estado==='cobrado'&&rnd()<.06){var p=pick(prods);ventas.push({id:'v'+ventas.length,fecha:f,hora:t.hora,prodId:p.id,nombre:p.nombre,precio:p.precio,cant:1,pago:pago,turnoId:t.id,cliente:c.n})}
+      }
+      d=addDays(d,c.gap+ri(-3,3));
+    }
+  });
+  // Dos reservas online para hoy (una de un cliente conocido, otra de uno nuevo), en los primeros huecos de la tarde.
+  var onl=[{n:'Lauti',s:1},{n:'Valentino (online)',s:0}],mm=Math.max(nowM+45,15*60);mm=Math.ceil(mm/30)*30;
+  onl.forEach(function(o){var dur=30;while(mm+dur<=HORA_FIN&&!libre(hoyS,mm,dur))mm+=30;
+    if(mm+dur<=HORA_FIN){ocupar(hoyS,mm,dur);turnos.push({id:'o'+turnos.length,fecha:hoyS,hora:hm(mm),dur:dur,nombre:o.n,servicio:servicios[o.s].n,precio:servicios[o.s].p,pago:'',estado:'reservado',origen:'online',propina:0,nota:''});mm+=30}
+    else{var man=addDays(hoy,1);if(man.getDay()===0)man=addDays(man,1);var fm=iso(man),m2=11*60;while(!libre(fm,m2,dur))m2+=30;ocupar(fm,m2,dur);turnos.push({id:'o'+turnos.length,fecha:fm,hora:hm(m2),dur:dur,nombre:o.n,servicio:servicios[o.s].n,precio:servicios[o.s].p,pago:'',estado:'reservado',origen:'online',propina:0,nota:''})}
+  });
+  // Gastos de las últimas semanas
+  for(var w=0;w<11;w++){
+    var lun=lunesDe(addDays(hoy,-7*w));
+    gastos.push({id:'g'+gastos.length,fecha:iso(addDays(lun,ri(0,5))),concepto:'Insumos',monto:ri(18,46)*1000});
+    gastos.push({id:'g'+gastos.length,fecha:iso(addDays(lun,ri(0,5))),concepto:'Limpieza',monto:12000});
+    if(w%2===0)gastos.push({id:'g'+gastos.length,fecha:iso(addDays(lun,ri(0,5))),concepto:'Navajas y hojas',monto:9500});
+    if(rnd()<.5)gastos.push({id:'g'+gastos.length,fecha:iso(addDays(lun,ri(0,5))),concepto:'Café y agua',monto:ri(4,9)*1000});
+    var dm=addDays(lun,2);if(dm.getDate()<=7){gastos.push({id:'g'+gastos.length,fecha:iso(dm),concepto:'Alquiler',monto:380000});gastos.push({id:'g'+gastos.length,fecha:iso(addDays(dm,1)),concepto:'Luz',monto:ri(34,52)*1000})}
+  }
+  gastos=gastos.filter(function(g){return g.fecha<=hoyS});
+  var cli={};
+  cli['Ema']={tel:'',notas:'Fade bajo, barba perfilada. No le gusta la máquina en la nuca.'};
+  cli['Tío']={tel:'11 5555 0101',notas:'Viene siempre los sábados temprano.'};
+  cli['Tomi']={tel:'11 5555 0202',notas:''};
+  cli['Lauti']={tel:'11 5555 0303',notas:'Reserva por la web.'};
+  return {v:2,creado:hoyS,modified:false,turnos:turnos,clientes:cli,gastos:gastos,productos:prods,ventas:ventas,servicios:servicios};
+}
+</script>
