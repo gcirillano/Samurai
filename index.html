@@ -607,8 +607,8 @@ html[data-theme=dark] .toast button{background:rgba(0,0,0,.14)}
     <div class="foot">
       <button type="button" id="themeBtnSide"><svg><use href="#i-moon"/></svg><span>Modo oscuro</span></button>
       <button type="button" id="exportBtn"><svg><use href="#i-down"/></svg><span>Exportar a planilla</span></button>
-      <button type="button" id="resetBtnSide"><svg><use href="#i-reset"/></svg><span>Reiniciar demo</span></button>
-      <span style="padding:6px 10px">Demo con datos inventados</span>
+      <button type="button" id="resetBtnSide"><svg><use href="#i-reset"/></svg><span>Borrar todo</span></button>
+      <span style="padding:6px 10px">Datos solo en este navegador</span>
     </div>
   </aside>
 
@@ -656,7 +656,7 @@ html[data-theme=dark] .toast button{background:rgba(0,0,0,.14)}
      servicios: [{n, p, dur}]
    ===================================================================== */
 'use strict';
-var DB_KEY='samurai-v2';
+var DB_KEY='samurai-v3';
 var HORA_INI=10*60, HORA_FIN=20*60;              // grilla visible 10:00–20:00
 var SLOT_H=58;                                   // alto en px de 30 minutos (ver --slot en CSS)
 var DIAS=['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
@@ -698,8 +698,8 @@ function mode(arr){var c={},best=null,bn=0;arr.forEach(function(v){c[v]=(c[v]||0
 // ---------- estado y persistencia ----------
 var db=null, _cli=null;        // _cli: índice de clientes (cache, se invalida al guardar)
 function save(){db.modified=true;_cli=null;try{localStorage.setItem(DB_KEY,JSON.stringify(db))}catch(e){}}
-function load(){try{var r=localStorage.getItem(DB_KEY);if(r){var o=JSON.parse(r);if(o&&o.v===2)return o}}catch(e){}return null}
-function resetDemo(){db=seedDemo();_cli=null;try{localStorage.setItem(DB_KEY,JSON.stringify(db))}catch(e){}}
+function load(){try{var r=localStorage.getItem(DB_KEY);if(r){var o=JSON.parse(r);if(o&&o.v===3)return o}}catch(e){}return null}
+function borrarTodo(){db=seedVacio();_cli=null;try{localStorage.setItem(DB_KEY,JSON.stringify(db))}catch(e){}}
 function turnoById(id){for(var i=0;i<db.turnos.length;i++)if(db.turnos[i].id===id)return db.turnos[i];return null}
 function turnosDe(f){return db.turnos.filter(function(t){return t.fecha===f}).sort(byHora)}
 function ventasDe(f){return db.ventas.filter(function(v){return v.fecha===f})}
@@ -804,78 +804,13 @@ function exportarCaja(){
 }
 
 /* =====================================================================
-   DATOS DE DEMO · clientes inventados (ningún nombre es de una persona real)
-   Generador determinista (mulberry32) para que la demo sea siempre igual.
+   DATOS INICIALES · arranca vacío. Los clientes, la caja y el stock se arman
+   solos con lo que se carga. Solo hay una lista de servicios con precio de
+   partida (editable desde "Más"); no son datos de ningún cliente.
    ===================================================================== */
-function seedDemo(){
-  var seed=20261030;function rnd(){seed|=0;seed=seed+0x6D2B79F5|0;var t=Math.imul(seed^seed>>>15,1|seed);t=t+Math.imul(t^t>>>7,61|t)^t;return ((t^t>>>14)>>>0)/4294967296}
-  function ri(a,b){return a+Math.floor(rnd()*(b-a+1))}
-  function pick(a){return a[Math.floor(rnd()*a.length)]}
-  var hoy=new Date();hoy.setHours(0,0,0,0);var hoyS=iso(hoy),nowM=ahoraMin();
-  var servicios=[{n:'Corte',p:18000,dur:30},{n:'Corte + barba',p:22000,dur:30},{n:'Niño',p:16500,dur:30},{n:'Barba',p:12000,dur:30},{n:'Premium',p:24000,dur:45},{n:'Dos personas',p:36000,dur:60}];
-  var nombres=['Tomi','Gian','Brai','Ema','Tío','Viejo','Fede (A)','Fede (B)','Lucho','Santi','Joaco','Agus','Maxi','Rama','Seba','Cholo','Negro','Turco','Facu','Mati','Nico','Lauti','Thiago','Benja','Juanma','Pipa','Rulo','Tano','Gordo','Chino','Dani (B)','Fran','Iván','Ale','Pablito','Colo','Nahue','Kevin','Marquitos','Lolo','Beto','Chule','Tute','Pato','Gonza','Leo','Rodri','Cris','Enzo','Nando','Tati','Polaco','Flaco','Ruso','Mono','Pepe','Tomás G.','Luca','Bauti','Vale','Ciro','Manu','Lucas R.','Ezequiel','Rafa','Diego','Martín','Nacho P.','Julián','Franco','Matías S.','Andy','Walter','Oscar','Lalo','Hugo','Tío Carlos','Alexis','Ramiro','Cande (hijo)','Pedrito','Emi','Jony','Ulises','Simón','Brian T.','Lisandro','Ramón','Damián','Axel','Gabi','Tiziano','Uriel','Mauro','Joel','Elías','Dylan','Nehuén','Federico M.',
-    'Agustín','Bruno','Camilo','Darío','Esteban','Fabián','Germán','Hernán','Ignacio','Jonathan','Kiko','Lucho (B)','Marcos','Nelson','Octavio','Pablo G.','Quique','Renzo','Sergio','Tobías','Valentín','Willy','Yamil','Zeta','Adrián','Braian','Cacho','Checho','Dante','Edu','Fito','Gastón','Horacio','Iñaqui','Jero','Lucas M.','Maxi (B)','Nico (B)','Orlando','Pancho','Ramita','Santi (B)','Tomi (B)','Vicente','Abel','Bautista R.','Claudio','Diego M.','Emanuel','Fermín','Gino','Hugo (hijo)','Isaías','Juanpi','Lalo (B)','Mariano','Nahuel S.','Otto','Pity','Rober','Sebi','Teo','Ulises (B)','Vitto','Yaco','Alan','Bebe','Coco','Dami','Ema (B)','Fran (B)','Guille','Juani','Lolo (B)','Mati (B)','Nacho','Pipi','Rodri (B)','Tomás','Agus (B)'];
-  var clientes=nombres.map(function(n,i){
-    var tipo=rnd();var gap=tipo<.5?ri(12,25):tipo<.85?ri(25,40):ri(45,75);
-    var sIdx=rnd()<.55?0:rnd()<.5?1:pick([2,3,4,5,0,1]);
-    return {n:n,gap:gap,s:sIdx,pago:rnd()<.62?'efectivo':'transferencia',hora:ri(HORA_INI,HORA_FIN-60),start:ri(5,11),
-      dropped:i%17===3,faltador:(i===6||i===23),propinero:rnd()<.12,semana:[1,2,3,4,5,6].filter(function(){return rnd()<.75})};
-  });
-  var turnos=[],ventas=[],gastos=[];
-  var prods=[{id:'p1',nombre:'Pomada mate',precio:14000,stock:6,min:3},{id:'p2',nombre:'Cera moldeadora',precio:12500,stock:4,min:3},{id:'p3',nombre:'Shampoo de barba',precio:11000,stock:2,min:3},{id:'p4',nombre:'Aceite de barba',precio:9500,stock:1,min:2},{id:'p5',nombre:'Polvo texturizador',precio:13000,stock:5,min:2},{id:'p6',nombre:'Gel fijación fuerte',precio:8000,stock:0,min:2},{id:'p7',nombre:'Peine de carbono',precio:4500,stock:7,min:3}];
-  var ocup={};
-  function libre(f,m,dur){var l=ocup[f]||[];for(var i=0;i<l.length;i++){if(m<l[i][1]&&m+dur>l[i][0])return false}return true}
-  function ocupar(f,m,dur){(ocup[f]=ocup[f]||[]).push([m,m+dur])}
-  function precioEn(s,f){var p=servicios[s].p;if(diffDias(f,hoyS)>35)p=Math.round(p*.92/500)*500;return p}
-  clientes.forEach(function(c){
-    var d=addDays(hoy,-(c.start*7+ri(0,6)));
-    var fin=c.dropped?addDays(hoy,-ri(40,70)):addDays(hoy,7);
-    while(d<=fin){
-      var dd=new Date(d.getTime());
-      if(dd.getDay()===0)dd=addDays(dd,rnd()<.5?-1:1);          // domingo cerrado: va al sábado o al lunes
-      if(c.semana.length&&c.semana.indexOf(dd.getDay())<0&&rnd()<.4)dd=addDays(dd,1);
-      if(dd.getDay()===0)dd=addDays(dd,1);
-      var f=iso(dd),dur=servicios[c.s].dur;
-      var m=Math.round((c.hora+ri(-60,60))/30)*30; if(rnd()<.08)m+=pick([10,15,20,40]);
-      m=Math.max(HORA_INI,Math.min(HORA_FIN-dur,m));
-      var ok=false;for(var k=0;k<5&&!ok;k++){if(libre(f,m,dur))ok=true;else m+=30;if(m+dur>HORA_FIN)break}
-      if(ok){
-        ocupar(f,m,dur);
-        var estado='cobrado',pago=rnd()<.9?c.pago:(c.pago==='efectivo'?'transferencia':'efectivo');
-        if(f>hoyS){estado='confirmado';pago=''}
-        else if(f===hoyS){ if(m+dur<=nowM-10)estado='cobrado'; else if(m<=nowM&&m+dur>nowM-10)estado='silla'; else estado='confirmado'; if(estado!=='cobrado')pago='' }
-        else if(c.faltador&&rnd()<.3)estado='nocame';
-        else if(rnd()<.025)estado='nocame';
-        if(estado==='nocame')pago='';
-        var t={id:'d'+turnos.length,fecha:f,hora:hm(m),dur:dur,nombre:c.n,servicio:servicios[c.s].n,precio:precioEn(c.s,f),pago:pago,estado:estado,origen:'local',propina:(estado==='cobrado'&&c.propinero&&rnd()<.5)?pick([1000,2000,2000,3000]):0,nota:''};
-        turnos.push(t);
-        if(estado==='cobrado'&&rnd()<.06){var p=pick(prods);ventas.push({id:'v'+ventas.length,fecha:f,hora:t.hora,prodId:p.id,nombre:p.nombre,precio:p.precio,cant:1,pago:pago,turnoId:t.id,cliente:c.n})}
-      }
-      d=addDays(d,c.gap+ri(-3,3));
-    }
-  });
-  // Dos reservas online para hoy (una de un cliente conocido, otra de uno nuevo), en los primeros huecos de la tarde.
-  var onl=[{n:'Lauti',s:1},{n:'Valentino (online)',s:0}],mm=Math.max(nowM+45,15*60);mm=Math.ceil(mm/30)*30;
-  onl.forEach(function(o){var dur=30;while(mm+dur<=HORA_FIN&&!libre(hoyS,mm,dur))mm+=30;
-    if(mm+dur<=HORA_FIN){ocupar(hoyS,mm,dur);turnos.push({id:'o'+turnos.length,fecha:hoyS,hora:hm(mm),dur:dur,nombre:o.n,servicio:servicios[o.s].n,precio:servicios[o.s].p,pago:'',estado:'reservado',origen:'online',propina:0,nota:''});mm+=30}
-    else{var man=addDays(hoy,1);if(man.getDay()===0)man=addDays(man,1);var fm=iso(man),m2=11*60;while(!libre(fm,m2,dur))m2+=30;ocupar(fm,m2,dur);turnos.push({id:'o'+turnos.length,fecha:fm,hora:hm(m2),dur:dur,nombre:o.n,servicio:servicios[o.s].n,precio:servicios[o.s].p,pago:'',estado:'reservado',origen:'online',propina:0,nota:''})}
-  });
-  // Gastos de las últimas semanas
-  for(var w=0;w<11;w++){
-    var lun=lunesDe(addDays(hoy,-7*w));
-    gastos.push({id:'g'+gastos.length,fecha:iso(addDays(lun,ri(0,5))),concepto:'Insumos',monto:ri(18,46)*1000});
-    gastos.push({id:'g'+gastos.length,fecha:iso(addDays(lun,ri(0,5))),concepto:'Limpieza',monto:12000});
-    if(w%2===0)gastos.push({id:'g'+gastos.length,fecha:iso(addDays(lun,ri(0,5))),concepto:'Navajas y hojas',monto:9500});
-    if(rnd()<.5)gastos.push({id:'g'+gastos.length,fecha:iso(addDays(lun,ri(0,5))),concepto:'Café y agua',monto:ri(4,9)*1000});
-    var dm=addDays(lun,2);if(dm.getDate()<=7){gastos.push({id:'g'+gastos.length,fecha:iso(dm),concepto:'Alquiler',monto:380000});gastos.push({id:'g'+gastos.length,fecha:iso(addDays(dm,1)),concepto:'Luz',monto:ri(34,52)*1000})}
-  }
-  gastos=gastos.filter(function(g){return g.fecha<=hoyS});
-  var cli={};
-  cli['Ema']={tel:'',notas:'Fade bajo, barba perfilada. No le gusta la máquina en la nuca.'};
-  cli['Tío']={tel:'11 5555 0101',notas:'Viene siempre los sábados temprano.'};
-  cli['Tomi']={tel:'11 5555 0202',notas:''};
-  cli['Lauti']={tel:'11 5555 0303',notas:'Reserva por la web.'};
-  return {v:2,creado:hoyS,modified:false,turnos:turnos,clientes:cli,gastos:gastos,productos:prods,ventas:ventas,servicios:servicios};
+function seedVacio(){
+  var servicios=[{n:'Corte',p:18000,dur:30},{n:'Corte + barba',p:22000,dur:30},{n:'Barba',p:12000,dur:30},{n:'Dos personas',p:36000,dur:60}];
+  return {v:3,turnos:[],clientes:{},gastos:[],productos:[],ventas:[],servicios:servicios};
 }
 </script>
 
@@ -1374,14 +1309,14 @@ function sheetMore(){
   var body='<div class="setrow"><span>Tema</span><div class="seg" style="width:230px"><button type="button" data-th="auto"'+(th==='auto'?' class="on"':'')+'>Auto</button><button type="button" data-th="light"'+(th==='light'?' class="on"':'')+'>Claro</button><button type="button" data-th="dark"'+(th==='dark'?' class="on"':'')+'>Oscuro</button></div></div>'
     +'<div class="setrow"><span>Servicios y precios</span><button type="button" class="btn sm" id="mSvc">'+icon('edit')+'Editar</button></div>'
     +'<div class="setrow"><span>Exportar a planilla<br><small class="mut">CSV, se abre en Excel o Google Sheets</small></span><div style="display:flex;gap:6px"><button type="button" class="btn sm" id="mExpC">'+icon('down')+'Clientes</button><button type="button" class="btn sm" id="mExpK">'+icon('down')+'Caja</button></div></div>'
-    +'<div class="setrow"><span>Datos de demo<br><small class="mut">Clientes inventados. Se guardan en este navegador.</small></span><button type="button" class="btn sm ghost danger" id="mReset">'+icon('reset')+'Reiniciar demo</button></div>'
+    +'<div class="setrow"><span>Borrar todos los datos<br><small class="mut">Se guardan solo en este navegador. Exportá antes a planilla.</small></span><button type="button" class="btn sm ghost danger" id="mReset">'+icon('reset')+'Borrar todo</button></div>'
     +'<div class="setrow mut" style="font-size:12px">Samurai Barber · gestión interna. Las reservas online entran solas a la agenda cuando esté conectado el sistema de turnos (hoy están simuladas).</div>';
   openSheet(sheetFrame('Ajustes','',body,''));
   $$('#sheet [data-th]').forEach(function(b){b.onclick=function(){setTheme(b.getAttribute('data-th'));$$('#sheet [data-th]').forEach(function(x){x.classList.toggle('on',x===b)})}});
   $('#mSvc').onclick=function(){sheetServicios()};
   $('#mExpC').onclick=function(){exportarClientes();toast('Planilla de clientes descargada')};
   $('#mExpK').onclick=function(){exportarCaja();toast('Planilla de caja descargada')};
-  $('#mReset').onclick=function(){if(confirm('¿Volver a los datos de demo? Se pierde lo que cargaste.')){resetDemo();prevVals={};closeSheet();ui.fecha=hoyIso();refrescar();toast('Demo reiniciada')}};
+  $('#mReset').onclick=function(){if(confirm('¿Borrar TODOS los datos de este navegador (turnos, clientes, caja y productos)? No se puede deshacer.')){borrarTodo();prevVals={};closeSheet();ui.fecha=hoyIso();refrescar();toast('Datos borrados')}};
 }
 </script>
 
@@ -1547,12 +1482,11 @@ function setTheme(t){
 function toggleTheme(){var dark=document.documentElement.getAttribute('data-theme')==='dark';setTheme(dark?'light':'dark')}
 function init(){
   db=load();
-  if(!db){db=seedDemo();try{localStorage.setItem(DB_KEY,JSON.stringify(db))}catch(e){}}
-  else if(db.creado!==hoyIso()&&!db.modified){db=seedDemo();try{localStorage.setItem(DB_KEY,JSON.stringify(db))}catch(e){}}   // demo intacta: se regenera cada día para que "hoy" tenga turnos
+  if(!db){db=seedVacio();try{localStorage.setItem(DB_KEY,JSON.stringify(db))}catch(e){}}
   setTheme(getTheme());
   $('#themeBtn').onclick=toggleTheme;$('#themeBtnSide').onclick=toggleTheme;
   $('#moreBtn').onclick=sheetMore;$('#exportBtn').onclick=sheetMore;
-  $('#resetBtnSide').onclick=function(){if(confirm('¿Volver a los datos de demo? Se pierde lo que cargaste.')){resetDemo();prevVals={};ui.fecha=hoyIso();refrescar();toast('Demo reiniciada')}};
+  $('#resetBtnSide').onclick=function(){if(confirm('¿Borrar TODOS los datos de este navegador (turnos, clientes, caja y productos)? No se puede deshacer.')){borrarTodo();prevVals={};ui.fecha=hoyIso();refrescar();toast('Datos borrados')}};
   if(window.matchMedia){try{window.matchMedia('(prefers-color-scheme: dark)').addListener(function(){if(getTheme()==='auto')setTheme('auto')})}catch(e){}}
   var hash=(location.hash||'').replace('#','');
   setView(VIEWS.some(function(v){return v.id===hash})?hash:'hoy');

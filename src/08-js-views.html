@@ -160,12 +160,11 @@ function setTheme(t){
 function toggleTheme(){var dark=document.documentElement.getAttribute('data-theme')==='dark';setTheme(dark?'light':'dark')}
 function init(){
   db=load();
-  if(!db){db=seedDemo();try{localStorage.setItem(DB_KEY,JSON.stringify(db))}catch(e){}}
-  else if(db.creado!==hoyIso()&&!db.modified){db=seedDemo();try{localStorage.setItem(DB_KEY,JSON.stringify(db))}catch(e){}}   // demo intacta: se regenera cada día para que "hoy" tenga turnos
+  if(!db){db=seedVacio();try{localStorage.setItem(DB_KEY,JSON.stringify(db))}catch(e){}}
   setTheme(getTheme());
   $('#themeBtn').onclick=toggleTheme;$('#themeBtnSide').onclick=toggleTheme;
   $('#moreBtn').onclick=sheetMore;$('#exportBtn').onclick=sheetMore;
-  $('#resetBtnSide').onclick=function(){if(confirm('¿Volver a los datos de demo? Se pierde lo que cargaste.')){resetDemo();prevVals={};ui.fecha=hoyIso();refrescar();toast('Demo reiniciada')}};
+  $('#resetBtnSide').onclick=function(){if(confirm('¿Borrar TODOS los datos de este navegador (turnos, clientes, caja y productos)? No se puede deshacer.')){borrarTodo();prevVals={};ui.fecha=hoyIso();refrescar();toast('Datos borrados')}};
   if(window.matchMedia){try{window.matchMedia('(prefers-color-scheme: dark)').addListener(function(){if(getTheme()==='auto')setTheme('auto')})}catch(e){}}
   var hash=(location.hash||'').replace('#','');
   setView(VIEWS.some(function(v){return v.id===hash})?hash:'hoy');

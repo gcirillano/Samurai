@@ -256,13 +256,13 @@ function sheetMore(){
   var body='<div class="setrow"><span>Tema</span><div class="seg" style="width:230px"><button type="button" data-th="auto"'+(th==='auto'?' class="on"':'')+'>Auto</button><button type="button" data-th="light"'+(th==='light'?' class="on"':'')+'>Claro</button><button type="button" data-th="dark"'+(th==='dark'?' class="on"':'')+'>Oscuro</button></div></div>'
     +'<div class="setrow"><span>Servicios y precios</span><button type="button" class="btn sm" id="mSvc">'+icon('edit')+'Editar</button></div>'
     +'<div class="setrow"><span>Exportar a planilla<br><small class="mut">CSV, se abre en Excel o Google Sheets</small></span><div style="display:flex;gap:6px"><button type="button" class="btn sm" id="mExpC">'+icon('down')+'Clientes</button><button type="button" class="btn sm" id="mExpK">'+icon('down')+'Caja</button></div></div>'
-    +'<div class="setrow"><span>Datos de demo<br><small class="mut">Clientes inventados. Se guardan en este navegador.</small></span><button type="button" class="btn sm ghost danger" id="mReset">'+icon('reset')+'Reiniciar demo</button></div>'
+    +'<div class="setrow"><span>Borrar todos los datos<br><small class="mut">Se guardan solo en este navegador. Exportá antes a planilla.</small></span><button type="button" class="btn sm ghost danger" id="mReset">'+icon('reset')+'Borrar todo</button></div>'
     +'<div class="setrow mut" style="font-size:12px">Samurai Barber · gestión interna. Las reservas online entran solas a la agenda cuando esté conectado el sistema de turnos (hoy están simuladas).</div>';
   openSheet(sheetFrame('Ajustes','',body,''));
   $$('#sheet [data-th]').forEach(function(b){b.onclick=function(){setTheme(b.getAttribute('data-th'));$$('#sheet [data-th]').forEach(function(x){x.classList.toggle('on',x===b)})}});
   $('#mSvc').onclick=function(){sheetServicios()};
   $('#mExpC').onclick=function(){exportarClientes();toast('Planilla de clientes descargada')};
   $('#mExpK').onclick=function(){exportarCaja();toast('Planilla de caja descargada')};
-  $('#mReset').onclick=function(){if(confirm('¿Volver a los datos de demo? Se pierde lo que cargaste.')){resetDemo();prevVals={};closeSheet();ui.fecha=hoyIso();refrescar();toast('Demo reiniciada')}};
+  $('#mReset').onclick=function(){if(confirm('¿Borrar TODOS los datos de este navegador (turnos, clientes, caja y productos)? No se puede deshacer.')){borrarTodo();prevVals={};closeSheet();ui.fecha=hoyIso();refrescar();toast('Datos borrados')}};
 }
 </script>
