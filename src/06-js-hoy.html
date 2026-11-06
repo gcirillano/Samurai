@@ -2,7 +2,7 @@
 /* =====================================================================
    JS · PARTE 2: VISTA HOY (agenda), acciones sobre turnos, arrastrar y soltar
    ===================================================================== */
-var ui={view:'hoy',fecha:hoyIso(),sortCli:'frecuentes',q:'',cajaPeriodo:'semana',semana:lunesDe(new Date()),scrolledToNow:false};
+var ui={view:'hoy',fecha:hoyIso(),hoy:hoyIso(),sortCli:'frecuentes',q:'',cajaPeriodo:'semana',semana:lunesDe(new Date()),scrolledToNow:false,ini:HORA_INI};   // hoy: día real (para el cambio de día) · ini: inicio de la grilla pintada
 var prevVals={};   // valores anteriores de los contadores (para animar de un número al otro)
 
 // ---------- toast, confeti, contadores ----------
@@ -53,8 +53,8 @@ function renderHoy(opts){
   opts=opts||{};
   var f=ui.fecha,ts=turnosDe(f),tot=totalesDia(f),esHoy=f===hoyIso(),hoy=hoyIso(),nowM=ahoraMin();
   renderWeekstrip();
-  var fin=HORA_FIN;ts.forEach(function(t){fin=Math.max(fin,toMin(t.hora)+(t.dur||30))});fin=Math.ceil(fin/30)*30;
-  var slots=(fin-HORA_INI)/30,H=slots*SLOT_H;
+  var fin=HORA_FIN,ini=HORA_INI;ts.forEach(function(t){var a=toMin(t.hora);fin=Math.max(fin,a+(t.dur||30));ini=Math.min(ini,a)});fin=Math.ceil(fin/30)*30;ini=Math.floor(ini/30)*30;ui.ini=ini;   // la grilla se estira hacia abajo y hacia arriba
+  var slots=(fin-ini)/30,H=slots*SLOT_H;
   var prox=proximoTurno(f),facturado=tot.cobrado+tot.propinas+tot.productos;
   var tit=esHoy?'Hoy':(diffDias(hoy,f)===1?'Mañana':diffDias(hoy,f)===-1?'Ayer':DIAS[fromIso(f).getDay()]);
   var h='<div class="hoy-grid"><div>';
@@ -69,20 +69,20 @@ function renderHoy(opts){
   // --- agenda ---
   if(!ts.length)h+='<div class="empty">'+icon('scissors')+'Día libre. Tocá un horario para anotar un turno.</div>';   // arriba de la grilla, donde se ve
   h+='<div class="agenda'+(opts.keepScroll?' noanim':'')+'" id="agenda" style="height:'+H+'px"><div class="rail">';
-  for(var m=HORA_INI;m<=fin;m+=30){var top=(m-HORA_INI)/30*SLOT_H;h+='<span class="tick'+(m%60===0?' hour':'')+'" style="top:'+top+'px">'+hm(m)+'</span>'}
+  for(var m=ini;m<=fin;m+=30){var top=(m-ini)/30*SLOT_H;h+='<span class="tick'+(m%60===0?' hour':'')+'" style="top:'+top+'px">'+hm(m)+'</span>'}
   h+='</div><div class="grid" style="height:'+H+'px">';
-  for(var m2=HORA_INI;m2<=fin;m2+=30){h+='<div class="line'+(m2%60===0?' hour':'')+'" style="top:'+((m2-HORA_INI)/30*SLOT_H)+'px"></div>'}
+  for(var m2=ini;m2<=fin;m2+=30){h+='<div class="line'+(m2%60===0?' hour':'')+'" style="top:'+((m2-ini)/30*SLOT_H)+'px"></div>'}
   // huecos libres (intervalos sin turno)
-  var occ=ts.map(function(t){return [toMin(t.hora),toMin(t.hora)+(t.dur||30)]}).sort(function(a,b){return a[0]-b[0]}),cur=HORA_INI,libres=[];
+  var occ=ts.map(function(t){return [toMin(t.hora),toMin(t.hora)+(t.dur||30)]}).sort(function(a,b){return a[0]-b[0]}),cur=ini,libres=[];
   occ.forEach(function(o){if(o[0]>cur)libres.push([cur,o[0]]);cur=Math.max(cur,o[1])});if(cur<fin)libres.push([cur,fin]);
-  libres.forEach(function(l){if(l[1]-l[0]<15)return;var top=(l[0]-HORA_INI)/30*SLOT_H,hh=(l[1]-l[0])/30*SLOT_H;
+  libres.forEach(function(l){if(l[1]-l[0]<15)return;var top=(l[0]-ini)/30*SLOT_H,hh=(l[1]-l[0])/30*SLOT_H;
     var past=esHoy&&l[1]<=nowM, lbls='';
     for(var mm=Math.ceil(l[0]/30)*30;mm<l[1];mm+=30){if(l[1]-mm<20)break;lbls+='<span class="plus" style="top:'+((mm-l[0])/30*SLOT_H)+'px">'+icon('plus')+hm(Math.max(mm,l[0]))+'</span>'}
     h+='<button type="button" class="free'+(past?' past':'')+'" data-a="'+l[0]+'" data-b="'+l[1]+'" style="top:'+top+'px;height:'+hh+'px" aria-label="Libre de '+hm(l[0])+' a '+hm(l[1])+'">'+lbls+'</button>'});
   // turnos (con columnas cuando se pisan)
   var lay=layoutCols(ts);
   ts.forEach(function(t,i){
-    var a=toMin(t.hora),dur=t.dur||30,top=(a-HORA_INI)/30*SLOT_H,hh=dur/30*SLOT_H-4,L=lay[t.id];
+    var a=toMin(t.hora),dur=t.dur||30,top=(a-ini)/30*SLOT_H,hh=dur/30*SLOT_H-4,L=lay[t.id];
     var st=statsCliente(t.nombre),late=esHoy&&(t.estado==='confirmado'||t.estado==='reservado')&&a+15<nowM;
     var act;
     if(t.estado==='reservado'||t.estado==='confirmado')act='<button type="button" class="act" data-act="'+t.id+'" aria-label="Pasar a la silla">'+icon('chair')+'En silla</button>';
@@ -92,9 +92,9 @@ function renderHoy(opts){
     var vent=db.ventas.filter(function(v){return v.turnoId===t.id});
     var tags=(t.origen==='online'?'<span class="tag online">'+icon('globe')+'online</span>':'')+(st.reincidente&&t.estado!=='nocame'?'<span class="tag warn" title="Faltó '+st.faltas.length+' veces">'+icon('warn')+st.faltas.length+' faltas</span>':'');
     var sub='<b>'+money(t.precio)+'</b> · '+esc(t.servicio)+(a%30?' · '+t.hora:'')+(t.propina?' <span class="tag tip">+'+money(t.propina)+'</span>':'')+(vent.length?' <span class="tag prod">+'+vent.length+' prod.</span>':'');
-    h+='<div class="turno '+t.estado+(late?' late':'')+(dur<30?' compact':'')+'" data-id="'+t.id+'" style="top:'+top+'px;height:'+hh+'px;left:calc('+(L.c*100/L.n)+'% + 4px);width:calc('+(100/L.n)+'% - 6px);animation-delay:'+Math.min(i*30,300)+'ms">'
+    h+='<div class="turno '+t.estado+(late?' late':'')+(dur<30?' compact':'')+(L.n>1?' narrow':'')+'" data-id="'+t.id+'" style="top:'+top+'px;height:'+hh+'px;left:calc('+(L.c*100/L.n)+'% + 4px);width:calc('+(100/L.n)+'% - 6px);animation-delay:'+Math.min(i*30,300)+'ms">'
       +'<button type="button" class="grip" aria-label="Arrastrar para cambiar el horario">'+icon('grip')+'</button>'
-      +'<button type="button" class="body" data-open="'+t.id+'" aria-label="'+esc(t.nombre)+' '+t.hora+', editar">'+avatar(t.nombre)+'<span class="tx"><span class="nm">'+esc(t.nombre)+' '+tags+'</span><span class="sv">'+sub+'</span></span></button>'
+      +'<button type="button" class="body" data-open="'+t.id+'" aria-label="'+esc(t.nombre)+' '+t.hora+', editar">'+avatar(t.nombre)+'<span class="tx"><span class="nm"><span class="n">'+esc(t.nombre)+'</span>'+tags+'</span><span class="sv">'+sub+'</span></span></button>'
       +act+'<button type="button" class="more" data-menu="'+t.id+'" aria-label="Más opciones">'+icon('dots')+'</button></div>';
   });
   h+='<div class="now" id="nowLine" style="display:none"><span class="lbl" id="nowLbl"></span><span class="bar"></span><span class="dot"></span></div>';
@@ -119,7 +119,7 @@ function renderHoy(opts){
   ['qNuevo','aNuevo'].forEach(function(id){var b=$('#'+id);if(b)b.onclick=function(){sheetAlta({fecha:f,hora:sugerirHora(f)})}});
   ['qLlego','aLlego'].forEach(function(id){var b=$('#'+id);if(b)b.onclick=function(){sheetAlta({fecha:hoyIso(),hora:hm(Math.round(ahoraMin()/5)*5),enSilla:true})}});
   $$('.free',v).forEach(function(b){b.onclick=function(e){var a=+b.getAttribute('data-a'),bb=+b.getAttribute('data-b');
-    var y=e.clientY-b.getBoundingClientRect().top;var m=HORA_INI+Math.floor(((a-HORA_INI)/30*SLOT_H+y)/SLOT_H)*30;m=Math.max(a,Math.min(m,bb-30>a?bb-30:a));m=Math.ceil(m/5)*5;sheetAlta({fecha:f,hora:hm(m)})}});
+    var y=e.clientY-b.getBoundingClientRect().top;var m=ini+Math.floor(((a-ini)/30*SLOT_H+y)/SLOT_H)*30;m=Math.max(a,Math.min(m,bb-30>a?bb-30:a));m=Math.ceil(m/5)*5;sheetAlta({fecha:f,hora:hm(m)})}});
   $$('[data-act]',v).forEach(function(b){b.onclick=function(e){e.stopPropagation();avanzar(b.getAttribute('data-act'),b)}});
   $$('[data-open]',v).forEach(function(b){b.onclick=function(e){if(suppressClick){suppressClick=false;return}sheetAlta({id:b.getAttribute('data-open')})}});
   $$('[data-menu]',v).forEach(function(b){b.onclick=function(e){e.stopPropagation();sheetMenuTurno(b.getAttribute('data-menu'))}});
@@ -142,11 +142,11 @@ function layoutCols(ts){ // turnos que se pisan en el tiempo van en columnas lad
 }
 function updateNow(){
   var nl=$('#nowLine');if(!nl)return;
-  var esHoy=ui.fecha===hoyIso(),m=ahoraMin(),ag=$('#agenda'),fin=ag?HORA_INI+(ag.offsetHeight/SLOT_H)*30:HORA_FIN;
-  if(!esHoy||m<HORA_INI||m>fin){nl.style.display='none';return}
-  nl.style.display='block';nl.style.top=((m-HORA_INI)/30*SLOT_H)+'px';$('#nowLbl').textContent=hm(m);
+  var esHoy=ui.fecha===hoyIso(),m=ahoraMin(),ag=$('#agenda'),ini=ui.ini,fin=ag?ini+(ag.offsetHeight/SLOT_H)*30:HORA_FIN;
+  if(!esHoy||m<ini||m>fin){nl.style.display='none';return}
+  nl.style.display='block';nl.style.top=((m-ini)/30*SLOT_H)+'px';$('#nowLbl').textContent=hm(m);
 }
-setInterval(function(){if(ui.view==='hoy')updateNow()},30000);
+setInterval(function(){var h=hoyIso();if(h!==ui.hoy){if(ui.fecha===ui.hoy)ui.fecha=h;ui.hoy=h;ui.scrolledToNow=false;refrescar()}else if(ui.view==='hoy')updateNow()},30000);   // cada 30 s: si cambió el día con la pestaña abierta pasa al día nuevo; si no, mueve la línea de ahora
 
 // ---------- acciones sobre turnos ----------
 function avanzar(id,btn){
@@ -159,10 +159,10 @@ function avanzar(id,btn){
 function cobrar(id,pago){
   var t=turnoById(id);if(!t)return;
   var st=statsCliente(t.nombre);pago=pago||t.pago||st.pagoHab||'efectivo';
-  t.estado='cobrado';t.pago=pago;save();vibrar([15,40,15]);
+  t.estado='cobrado';t.pago=pago;db.ventas.forEach(function(v){if(v.turnoId===id)v.pago=pago});save();vibrar([15,40,15]);   // las ventas del turno siguen su pago
   if(ui.view==='hoy')renderHoy({paid:id,keepScroll:true});else refrescar();
   var otro=pago==='efectivo'?'transferencia':'efectivo';
-  toast('Cobrado '+money(t.precio+(t.propina||0))+' · '+pago,{label:'Fue por '+otro,fn:function(){t.pago=otro;save();refrescar();toast('Listo: '+otro)}});
+  toast('Cobrado '+money(t.precio+(t.propina||0))+' · '+pago,{label:'Fue por '+otro,fn:function(){t.pago=otro;db.ventas.forEach(function(v){if(v.turnoId===id)v.pago=otro});save();refrescar();toast('Listo: '+otro)}});
 }
 function setEstado(id,estado){
   var t=turnoById(id);if(!t)return;
@@ -219,8 +219,8 @@ document.addEventListener('pointermove',function(e){
   var dy=e.clientY+window.pageYOffset-drag.y0;
   if(!drag.active){if(Math.abs(dy)>6)activarDrag();else return}
   e.preventDefault();
-  var dur=drag.t.dur||30,m=Math.round((drag.min0+dy/SLOT_H*30)/5)*5;m=Math.max(HORA_INI,Math.min(m,Math.max(drag.fin,HORA_FIN)-dur));
-  drag.newMin=m;var top=(m-HORA_INI)/30*SLOT_H;
+  var dur=drag.t.dur||30,m=Math.round((drag.min0+dy/SLOT_H*30)/5)*5;m=Math.max(ui.ini,Math.min(m,Math.max(drag.fin,HORA_FIN)-dur));
+  drag.newMin=m;var top=(m-ui.ini)/30*SLOT_H;
   drag.card.style.transform='translateY('+(drag.top0+dy-drag.top0)+'px) scale(1.02)';
   drag.ghost.textContent=hm(m);drag.ghost.style.top=top+'px';
   if(e.clientY<90)window.scrollBy(0,-14);else if(e.clientY>window.innerHeight-90)window.scrollBy(0,14);

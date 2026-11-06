@@ -4,14 +4,15 @@
    ===================================================================== */
 
 // ---------- SEMANA (los días lado a lado, como la hoja de Augusto) ----------
-function renderSemana(){
+function renderSemana(opts){opts=opts||{};
   var lun=ui.semana,hoy=hoyIso(),ts=totalesSemana(lun),prev=totalesSemana(addDays(lun,-7));
-  var fact=ts.cobrado+ts.propinas+ts.productos,factPrev=prev.cobrado+prev.propinas+prev.productos;
-  var diasCon=ts.dias.filter(function(d){return d.cortes>0}).length,delta=factPrev?Math.round((fact-factPrev)/factPrev*100):null;
-  var maxTot=1;ts.dias.forEach(function(d){maxTot=Math.max(maxTot,d.cobrado+d.propinas+d.productos)});
-  var esta=iso(lun)===iso(lunesDe(new Date()));
+  var esta=iso(lun)===iso(lunesDe(new Date())),nd=esta?diffDias(iso(lun),hoy)+1:7;   // esta semana: se compara solo hasta hoy
+  var sumF=function(d){return d.cobrado+d.propinas+d.productos};
+  var fact=ts.cobrado+ts.propinas+ts.productos,factPrev=prev.dias.slice(0,nd).reduce(function(s,d){return s+sumF(d)},0);
+  var diasCon=ts.dias.filter(function(d){return d.cortes>0}).length,delta=(factPrev&&iso(lun)<=iso(lunesDe(new Date())))?Math.round((fact-factPrev)/factPrev*100):null;   // una semana futura no se compara
+  var maxTot=1;ts.dias.forEach(function(d){maxTot=Math.max(maxTot,sumF(d))});
   var h='<div class="vhead"><h2>Semana<span class="sub">'+fechaCorta(iso(lun)).slice(4)+' – '+fechaCorta(iso(addDays(lun,6))).slice(4)+(esta?' · esta semana':'')+'</span></h2><div class="ctl"><button type="button" class="ibtn" id="swPrev" aria-label="Semana anterior">'+icon('left')+'</button>'+(esta?'':'<button type="button" class="pill" id="swHoy">Esta semana</button>')+'<button type="button" class="ibtn" id="swNext" aria-label="Semana siguiente">'+icon('right')+'</button></div></div>';
-  h+='<div class="week-sum"><div class="stat ok"><small>Facturado</small><b class="num" data-cnt="wfact" data-to="'+fact+'" data-fmt="money">'+money(fact)+'</b></div><div class="stat"><small>Cortes</small><b data-cnt="wcortes" data-to="'+ts.cortes+'">'+ts.cortes+'</b></div><div class="stat"><small>Promedio por día</small><b class="num">'+money(diasCon?fact/diasCon:0)+'</b></div><div class="stat"><small>vs. semana anterior</small><b class="'+(delta==null?'':delta>=0?'delta up':'delta down')+'">'+(delta==null?'—':(delta>=0?'+':'')+delta+'%')+'</b></div></div>';
+  h+='<div class="week-sum"><div class="stat ok"><small>Facturado</small><b class="num" data-cnt="wfact" data-to="'+fact+'" data-fmt="money">'+money(fact)+'</b></div><div class="stat"><small>Cortes</small><b data-cnt="wcortes" data-to="'+ts.cortes+'">'+ts.cortes+'</b></div><div class="stat"><small>Promedio por día</small><b class="num">'+money(diasCon?fact/diasCon:0)+'</b></div><div class="stat"><small>vs. semana anterior'+(esta&&nd<7?(nd===1?' (mismo día)':' (mismos '+nd+' días)'):'')+'</small><b class="'+(delta==null?'':delta>=0?'delta up':'delta down')+'">'+(delta==null?'—':(delta>=0?'+':'')+delta+'%')+'</b></div></div>';
   h+='<div class="wgrid">';
   for(var i=0;i<7;i++){var d=addDays(lun,i),f=iso(d),tl=turnosDe(f),tot=ts.dias[i],fd=tot.cobrado+tot.propinas+tot.productos,oc=ocupacionDia(f);
     h+='<div class="wday'+(f===hoy?' today':'')+'"><button type="button" class="dh" data-f="'+f+'"><small>'+DIAS[d.getDay()]+'</small><b>'+d.getDate()+' '+MESES_C[d.getMonth()]+'</b><span class="tot'+(fd?'':' zero')+'">'+(fd?money(fd):(tl.length?money(tot.porCobrar)+' a cobrar':'libre'))+'</span></button>';
@@ -20,10 +21,10 @@ function renderSemana(){
     h+='<button type="button" class="add" data-add="'+f+'">'+icon('plus')+' turno</button></div>';
   }
   h+='</div>';
-  var v=$('#v-semana');v.innerHTML=h;
+  var v=$('#v-semana'),g0=$('.wgrid',v),sl=g0?g0.scrollLeft:0;v.innerHTML=h;var g=$('.wgrid',v),td=$('.wday.today',v);g.scrollLeft=(opts.irHoy&&td)?Math.max(0,td.offsetLeft-g.offsetLeft):sl;   // celular: arranca en hoy y al refrescar no salta al lunes
   $('#swPrev').onclick=function(){ui.semana=addDays(ui.semana,-7);renderSemana()};
   $('#swNext').onclick=function(){ui.semana=addDays(ui.semana,7);renderSemana()};
-  var sh=$('#swHoy');if(sh)sh.onclick=function(){ui.semana=lunesDe(new Date());renderSemana()};
+  var sh=$('#swHoy');if(sh)sh.onclick=function(){ui.semana=lunesDe(new Date());renderSemana({irHoy:true})};
   $$('.dh',v).forEach(function(b){b.onclick=function(){ui.fecha=b.getAttribute('data-f');ui.scrolledToNow=false;setView('hoy')}});
   $$('[data-open]',v).forEach(function(b){b.onclick=function(){sheetAlta({id:b.getAttribute('data-open')})}});
   $$('[data-add]',v).forEach(function(b){b.onclick=function(){var f=b.getAttribute('data-add');sheetAlta({fecha:f,hora:sugerirHora(f)})}});
@@ -32,7 +33,7 @@ function renderSemana(){
 
 // ---------- CLIENTES ----------
 function renderClientes(){
-  var all=listaClientes().filter(function(c){return c.n||c.futuros.length||c.hoy.length||c.faltas.length}),q=ui.q.trim().toLowerCase();
+  var all=listaClientes().filter(function(c){return c.n||c.futuros.length||c.hoy.length||c.faltas.length||c.pendientes.length}),q=ui.q.trim().toLowerCase();
   var late=all.filter(function(c){return c.estado==='late'}).length,due=all.filter(function(c){return c.estado==='due'}).length;
   var l=all.filter(function(c){return !q||c.nombre.toLowerCase().indexOf(q)>=0});
   var s=ui.sortCli;
@@ -46,12 +47,12 @@ function renderClientes(){
   if(s==='recuperar')h+='<div class="hdr-note">'+late+' ya tendrían que haber vuelto · '+due+' les toca estos días. Tocá uno para mandarle un WhatsApp.</div>';
   h+='<div class="clist">'+l.slice(0,120).map(function(c,i){
     var st,sc=c.estado;
-    if(c.estado==='nuevo')st='Nuevo<small>'+(c.futuros.length||c.hoy.length?'tiene turno':'sin visitas')+'</small>';
+    if(c.estado==='nuevo')st='Nuevo<small>'+(c.futuros.length||c.hoy.length?'tiene turno':c.pendientes.length?'turno sin cerrar':'sin visitas')+'</small>';
     else if(c.estado==='late')st='Debería haber vuelto<small>hace '+c.atraso+' días</small>';
     else if(c.estado==='due')st=(c.atraso>0?'Le toca<small>desde hace '+c.atraso+' d</small>':'Le toca<small>'+(c.atraso===0?'hoy':'en '+(-c.atraso)+' días')+'</small>');
     else st='Al día<small>'+(c.ultima?haceDias(c.desde):'')+'</small>';
     var fill=c.ritmo?Math.min(1,c.desde/c.ritmo):0;
-    return '<button type="button" class="cli" data-n="'+esc(c.nombre)+'" style="animation-delay:'+Math.min(i*20,300)+'ms">'+avatar(c.nombre)+'<span class="tx"><span class="nm">'+esc(c.nombre)+(c.reincidente?'<span class="tag warn">'+icon('warn')+c.faltas.length+' faltas</span>':'')+(c.futuros.length?'<span class="tag online">turno '+fechaCorta(c.futuros[0].fecha)+'</span>':'')+'</span><span class="sv">'+(c.n?c.n+' visita'+(c.n===1?'':'s')+(c.ritmo?' · cada ~'+c.ritmo+' d':'')+' · '+esc(c.servHab)+' '+money(c.precioHab):'Sin visitas todavía')+'</span></span><span class="st '+sc+'">'+st+'</span><span class="ring '+sc+'"><i style="height:'+Math.round(fill*100)+'%"></i></span></button>'}).join('')+(l.length?'':'<div class="empty">'+icon('clientes')+'No hay nadie con ese nombre. Al anotar un turno se crea solo.</div>')+'</div>';
+    return '<button type="button" class="cli" data-n="'+esc(c.nombre)+'" style="animation-delay:'+Math.min(i*20,300)+'ms">'+avatar(c.nombre)+'<span class="tx"><span class="nm">'+esc(c.nombre)+(c.reincidente?'<span class="tag warn">'+icon('warn')+c.faltas.length+' faltas</span>':'')+(c.futuros.length?'<span class="tag online">turno '+fechaCorta(c.futuros[0].fecha)+'</span>':'')+'</span><span class="sv">'+(c.n?c.n+' visita'+(c.n===1?'':'s')+(c.ritmo?' · cada ~'+c.ritmo+' d':'')+' · '+esc(c.servHab)+' '+money(c.precioHab):'Sin visitas todavía')+'</span></span><span class="st '+sc+'">'+st+'</span><span class="ring '+sc+'"><i style="height:'+Math.round(fill*100)+'%"></i></span></button>'}).join('')+(l.length>120?'<div class="mut" style="grid-column:1/-1;padding:10px 0;text-align:center;font-size:13px">Se muestran 120 de '+l.length+' · buscá por nombre para ver el resto</div>':'')+'</div>'+(l.length?'':'<div class="empty">'+icon('clientes')+(q?'No hay nadie con ese nombre.':s==='recuperar'?'Nadie para recuperar: están todos al día.':'Todavía no hay clientes. Con el primer turno se arma la ficha sola.')+'</div>');
   var v=$('#v-clientes');v.innerHTML=h;
   var inp=$('#cQ');inp.oninput=function(){ui.q=inp.value;var pos=inp.selectionStart;renderClientes();var i2=$('#cQ');i2.focus();try{i2.setSelectionRange(pos,pos)}catch(e){}};
   $$('[data-sort]',v).forEach(function(b){b.onclick=function(){ui.sortCli=b.getAttribute('data-sort');renderClientes()}});
@@ -63,7 +64,8 @@ function renderClientes(){
 function renderCaja(){
   var hoy=hoyIso(),dia=ui.cajaPeriodo==='dia';
   var lun=ui.semana,T=dia?totalesDia(hoy):totalesSemana(lun),P=dia?totalesDia(iso(addDays(new Date(),-7))):totalesSemana(addDays(lun,-7));
-  var ingresos=T.cobrado+T.propinas+T.productos,ingPrev=P.cobrado+P.propinas+P.productos,delta=ingPrev?Math.round((ingresos-ingPrev)/ingPrev*100):null;
+  var estaSem=!dia&&iso(lun)===iso(lunesDe(new Date())),nd=estaSem?diffDias(iso(lun),hoy)+1:7;   // esta semana: se compara solo hasta hoy
+  var ingresos=T.cobrado+T.propinas+T.productos,ingPrev=dia?P.cobrado+P.propinas+P.productos:P.dias.slice(0,nd).reduce(function(s,d){return s+d.cobrado+d.propinas+d.productos},0),delta=(ingPrev&&(dia||iso(lun)<=iso(lunesDe(new Date()))))?Math.round((ingresos-ingPrev)/ingPrev*100):null;
   var desde=dia?hoy:iso(lun),hasta=dia?hoy:iso(addDays(lun,6));
   var gastos=db.gastos.filter(function(g){return g.fecha>=desde&&g.fecha<=hasta}).sort(function(a,b){return a.fecha<b.fecha?1:-1});
   var ventas=db.ventas.filter(function(v){return v.fecha>=desde&&v.fecha<=hasta}).sort(function(a,b){return (a.fecha+a.hora)<(b.fecha+b.hora)?1:-1});
@@ -72,7 +74,7 @@ function renderCaja(){
     +'<div class="ctl"><div class="seg" style="width:170px"><button type="button" data-per="dia"'+(dia?' class="on"':'')+'>Hoy</button><button type="button" data-per="semana"'+(!dia?' class="on"':'')+'>Semana</button></div>'
     +(dia?'':'<button type="button" class="ibtn" id="kPrev" aria-label="Semana anterior">'+icon('left')+'</button><button type="button" class="ibtn" id="kNext" aria-label="Semana siguiente">'+icon('right')+'</button>')+'</div></div>';
   h+='<div class="caja-grid">';
-  h+='<div class="card"><h3>Balance'+(delta!=null?'<span class="delta '+(delta>=0?'up':'down')+'" style="margin-left:auto">'+(delta>=0?'+':'')+delta+'% vs. '+(dia?'hace una semana':'semana anterior')+'</span>':'')+'</h3><div class="bal"><div class="in"><small>Ingresos</small><b class="num" data-cnt="kin" data-to="'+ingresos+'" data-fmt="money">'+money(ingresos)+'</b></div><div class="out"><small>Gastos</small><b class="num" data-cnt="kout" data-to="'+T.gastos+'" data-fmt="money">'+money(T.gastos)+'</b></div><div><small>Queda</small><b class="num" data-cnt="kbal" data-to="'+(ingresos-T.gastos)+'" data-fmt="money">'+money(ingresos-T.gastos)+'</b></div></div>'
+  h+='<div class="card"><h3>Balance'+(delta!=null?'<span class="delta '+(delta>=0?'up':'down')+'" style="margin-left:auto">'+(delta>=0?'+':'')+delta+'% vs. '+(dia?'hace una semana':'semana anterior'+(estaSem&&nd<7?(nd===1?' (mismo día)':' (mismos '+nd+' días)'):''))+'</span>':'')+'</h3><div class="bal"><div class="in"><small>Ingresos</small><b class="num" data-cnt="kin" data-to="'+ingresos+'" data-fmt="money">'+money(ingresos)+'</b></div><div class="out"><small>Gastos</small><b class="num" data-cnt="kout" data-to="'+T.gastos+'" data-fmt="money">'+money(T.gastos)+'</b></div><div><small>Queda</small><b class="num" data-cnt="kbal" data-to="'+(ingresos-T.gastos)+'" data-fmt="money">'+money(ingresos-T.gastos)+'</b></div></div>'
     +'<div class="hbar" style="margin-top:10px"><span class="l">Efectivo</span><span class="b"><i style="width:'+Math.round(T.efectivo/maxPay*100)+'%"></i></span><span class="v">'+money(T.efectivo)+'</span></div>'
     +'<div class="hbar"><span class="l">Transferencia</span><span class="b"><i class="tr" style="width:'+Math.round(T.transferencia/maxPay*100)+'%"></i></span><span class="v">'+money(T.transferencia)+'</span></div>'
     +'<div class="hbar"><span class="l">Cortes</span><span class="b"><i style="width:'+Math.round(T.cobrado/Math.max(1,ingresos)*100)+'%"></i></span><span class="v">'+T.cortes+' · '+money(T.cobrado)+'</span></div>'
@@ -85,7 +87,7 @@ function renderCaja(){
   // gastos
   h+='<div class="card"><h3>Gastos <span class="r"></span><button type="button" class="btn sm" id="kGasto" style="margin-left:auto">'+icon('plus')+'Gasto</button></h3><div class="list">'+(gastos.map(function(g){return '<div class="li"><span class="ic">'+icon('caja')+'</span><span class="tx"><b>'+esc(g.concepto)+'</b><small>'+fechaCorta(g.fecha)+'</small></span><span class="v out">−'+money(g.monto)+'</span><button type="button" class="del" data-gdel="'+g.id+'" aria-label="Borrar gasto">'+icon('trash')+'</button></div>'}).join('')||'<div class="mut" style="padding:6px 0;font-size:14px">Sin gastos '+(dia?'hoy':'esta semana')+'. Tocá "+ Gasto": concepto y monto, nada más.</div>')+'</div></div>';
   // ventas de productos
-  h+='<div class="card"><h3>Productos vendidos<span class="r">'+money(T.productos)+'</span></h3><div class="list">'+(ventas.slice(0,12).map(function(v){return '<div class="li"><span class="ic">'+icon('prod')+'</span><span class="tx"><b>'+esc(v.nombre)+(v.cant>1?' ×'+v.cant:'')+'</b><small>'+fechaCorta(v.fecha)+' '+v.hora+(v.cliente?' · '+esc(v.cliente):'')+' · '+v.pago+'</small></span><span class="v">'+money(v.precio*v.cant)+'</span></div>'}).join('')||'<div class="mut" style="padding:6px 0;font-size:14px">Nada vendido '+(dia?'hoy':'esta semana')+'. Se vende desde el turno o desde Productos.</div>')+'</div>'
+  h+='<div class="card"><h3>Productos vendidos<span class="r">'+money(T.productos)+'</span></h3><div class="list">'+(ventas.slice(0,12).map(function(v){return '<div class="li"><span class="ic">'+icon('prod')+'</span><span class="tx"><b>'+esc(v.nombre)+(v.cant>1?' ×'+v.cant:'')+'</b><small>'+fechaCorta(v.fecha)+' '+v.hora+(v.cliente?' · '+esc(v.cliente):'')+' · '+(v.pago||'sin cobrar')+'</small></span><span class="v"'+(v.pago?'':' style="opacity:.6"')+'>'+money(v.precio*v.cant)+'</span></div>'}).join('')||'<div class="mut" style="padding:6px 0;font-size:14px">Nada vendido '+(dia?'hoy':'esta semana')+'. Se vende desde el turno o desde Productos.</div>')+'</div>'
     +'<div class="actions-row"><button type="button" class="btn sm ghost" id="kExp">'+icon('down')+'Exportar caja a planilla</button></div></div>';
   h+='</div>';
   var v=$('#v-caja');v.innerHTML=h;
@@ -115,14 +117,14 @@ function chartSemanas(W,WP){
 function renderProductos(){
   var ps=db.productos.slice().sort(function(a,b){var la=a.stock<=a.min?0:1,lb=b.stock<=b.min?0:1;return la-lb||a.nombre.localeCompare(b.nombre,'es')});
   var low=ps.filter(function(p){return p.stock<=p.min}).length,hoy=hoyIso();
-  var vh=db.ventas.filter(function(v){return v.fecha===hoy}).reduce(function(s,v){return s+v.precio*v.cant},0);
+  var vh=totalesDia(hoy).productos;   // mismo criterio que Caja: lo atado a un turno cuenta recién al cobrar
   var h='<div class="vhead"><h2>Productos<span class="sub">'+(low?low+' por reponer · ':'')+'vendido hoy '+money(vh)+'</span></h2><button type="button" class="btn sm" id="pNuevo">'+icon('plus')+'Producto</button></div>';
   h+='<div class="pgrid">'+ps.map(function(p,i){var cls=p.stock<=0?'out':p.stock<=p.min?'low':'',pct=Math.round(Math.min(1,p.stock/Math.max(1,p.min*3))*100);
     return '<div class="prod '+cls+'" style="animation-delay:'+Math.min(i*30,240)+'ms"><div class="ph"><div class="tx"><span class="nm">'+esc(p.nombre)+'</span><span class="pr">'+money(p.precio)+' · avisar con '+p.min+'</span></div><div class="stock"><b>'+p.stock+'</b><small>en stock</small></div></div>'
       +'<div class="lvl"><i style="width:'+pct+'%"></i></div>'
       +(cls==='out'?'<span class="alert">'+icon('warn')+'Sin stock: hay que reponer</span>':cls==='low'?'<span class="alert">'+icon('warn')+'Se está acabando</span>':'<span class="alert" style="color:var(--mut);font-weight:500">Stock bien</span>')
       +'<div class="pa"><button type="button" class="btn ok" data-sell="'+p.id+'"'+(p.stock<=0?' disabled':'')+'>'+icon('cash')+'Vender</button><button type="button" class="btn rep" data-rep="'+p.id+'" aria-label="Reponer una unidad">'+icon('plus')+'1</button><button type="button" class="btn rep" data-rep5="'+p.id+'" aria-label="Reponer cinco unidades">'+icon('plus')+'5</button>'
-      +'<button type="button" class="btn ghost ed" data-pedit="'+p.id+'" aria-label="Editar producto">'+icon('edit')+'</button></div></div>'}).join('')+'</div>';
+      +'<button type="button" class="btn ghost ed" data-pedit="'+p.id+'" aria-label="Editar producto">'+icon('edit')+'</button></div></div>'}).join('')+'</div>'+(ps.length?'':'<div class="empty">'+icon('prod')+'Todavía no cargaste productos. Tocá "+ Producto": nombre, precio y cuántos tenés.</div>');
   var v=$('#v-productos');v.innerHTML=h;
   $('#pNuevo').onclick=function(){sheetProducto()};
   $$('[data-sell]',v).forEach(function(b){b.onclick=function(){venderProducto(b.getAttribute('data-sell'))}});
@@ -148,7 +150,7 @@ function setView(id){
   ui.view=id;$$('.view').forEach(function(v){v.classList.toggle('on',v.id==='v-'+id)});
   try{history.replaceState(null,'','#'+id)}catch(e){}
   renderNav();
-  if(id==='hoy'){window.scrollTo(0,0);ui.scrolledToNow=false;renderHoy()}else{window.scrollTo(0,0);if(id==='semana'){ui.semana=lunesDe(fromIso(ui.fecha));renderSemana()}else if(id==='clientes')renderClientes();else if(id==='caja')renderCaja();else renderProductos();renderWeekstrip()}
+  if(id==='hoy'){window.scrollTo(0,0);ui.scrolledToNow=false;renderHoy()}else{window.scrollTo(0,0);if(id==='semana'){ui.semana=lunesDe(fromIso(ui.fecha));renderSemana({irHoy:true})}else if(id==='clientes')renderClientes();else if(id==='caja')renderCaja();else renderProductos();renderWeekstrip()}
 }
 function getTheme(){try{return localStorage.getItem('samurai-v2-theme')||'auto'}catch(e){return 'auto'}}
 function setTheme(t){
@@ -160,7 +162,9 @@ function setTheme(t){
 function toggleTheme(){var dark=document.documentElement.getAttribute('data-theme')==='dark';setTheme(dark?'light':'dark')}
 function init(){
   db=load();
-  if(!db){db=seedVacio();try{localStorage.setItem(DB_KEY,JSON.stringify(db))}catch(e){}}
+  var roto=!db&&(_loadError==='corrupto'||_loadError==='version');   // había algo guardado pero no se pudo leer
+  if(!db){if(roto){try{localStorage.setItem(DB_KEY+'-backup-'+hoyIso(),_loadRaw)}catch(e){}}db=seedVacio();try{localStorage.setItem(DB_KEY,JSON.stringify(db))}catch(e){}}
+  try{localStorage.setItem(DB_KEY+'-test','1');localStorage.removeItem(DB_KEY+'-test')}catch(e){avisarSinGuardar()}   // ¿este navegador deja guardar?
   setTheme(getTheme());
   $('#themeBtn').onclick=toggleTheme;$('#themeBtnSide').onclick=toggleTheme;
   $('#moreBtn').onclick=sheetMore;$('#exportBtn').onclick=sheetMore;
@@ -168,6 +172,7 @@ function init(){
   if(window.matchMedia){try{window.matchMedia('(prefers-color-scheme: dark)').addListener(function(){if(getTheme()==='auto')setTheme('auto')})}catch(e){}}
   var hash=(location.hash||'').replace('#','');
   setView(VIEWS.some(function(v){return v.id===hash})?hash:'hoy');
+  if(roto)toast('Los datos guardados no se pudieron leer: quedó una copia en este navegador ('+DB_KEY+'-backup-'+hoyIso()+')');
 }
 init();
 </script>

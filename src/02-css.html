@@ -33,8 +33,10 @@
   .stats{grid-template-columns:repeat(3,1fr);gap:6px}
   .stat{padding:7px 8px}
   .stat b{font-size:15px}
+  .stat.ok b{font-size:20px}
   .stat.prox{display:none}
   .prox-inline{display:inline}
+  .prox-inline b{color:var(--ink);font-size:15px}
 }
 
 .quick{display:flex;gap:8px;padding:0 16px 10px}
@@ -59,7 +61,7 @@
 
 /* Línea de "ahora" */
 .now{position:absolute;left:-52px;right:0;height:0;z-index:4;pointer-events:none}
-.now .lbl{position:absolute;left:0;top:-9px;width:48px;text-align:right;font-size:11px;font-weight:700;color:var(--red);font-variant-numeric:tabular-nums}
+.now .lbl{position:absolute;left:0;top:-9px;width:48px;padding-right:4px;margin:0;letter-spacing:0;line-height:18px;text-align:right;font-size:11px;font-weight:700;color:var(--red);background:var(--bg);border-radius:4px;box-shadow:0 0 0 2px var(--bg);font-variant-numeric:tabular-nums}   /* margin y letter-spacing anulan lo que filtra .lbl; el fondo tapa el tick de la media hora */
 .now .bar{position:absolute;left:52px;right:0;top:0;border-top:2px solid var(--red);box-shadow:0 0 8px rgba(212,70,63,.5)}
 .now .dot{position:absolute;left:47px;top:-5px;width:10px;height:10px;border-radius:50%;background:var(--red);animation:pulse 2s infinite}
 
@@ -73,7 +75,9 @@
 .turno .body{flex:1;min-width:0;display:flex;align-items:center;gap:8px;height:100%;cursor:pointer;text-align:left;padding:2px 0}
 .turno .av{flex:none}
 .turno .tx{min-width:0;flex:1}
-.turno .nm{display:block;font-weight:700;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.turno .nm{display:flex;align-items:center;gap:4px;font-weight:700;font-size:15px;white-space:nowrap;overflow:hidden}
+.turno .nm .n{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.turno .nm .tag{flex:none}
 .turno .sv{display:block;font-size:12px;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .turno .sv b{color:var(--ink2);font-weight:600}
 .turno .hora{font-size:11px;color:var(--mut);font-variant-numeric:tabular-nums;margin-right:4px}
@@ -87,6 +91,7 @@
 .tag svg{width:10px;height:10px}
 .tag.online{background:var(--online-bg);color:var(--online)}
 .tag.warn{background:var(--red-bg);color:var(--red)}
+html[data-theme=dark] .tag.warn,html[data-theme=dark] .hint.warn{color:#f08a82}   /* rojo más claro sobre --red-bg oscuro: a 10px hace falta 4,5:1 */
 .tag.prod{background:var(--gold-bg);color:var(--gold)}
 .tag.tip{background:var(--ok-bg);color:var(--ok)}
 /* estados */
@@ -94,16 +99,19 @@
 .turno.reservado .act{background:var(--online-bg);color:var(--online)}
 .turno.confirmado .act{background:var(--card3);color:var(--ink)}
 .turno.silla{border-left-color:var(--silla);background:var(--silla-bg)}
-.turno.silla .act{background:var(--silla);color:#1a1200}
+.turno.silla .act{background:var(--silla);color:var(--silla-ink)}
 .turno.cobrado{border-left-color:var(--ok);background:var(--ok-bg)}
 .turno.cobrado .act{background:transparent;color:var(--ok);cursor:default}
 .turno.nocame{border-left-color:var(--no);opacity:.7}
-.turno.nocame .nm{text-decoration:line-through;color:var(--mut)}
+.turno.nocame .nm{color:var(--mut)}.turno.nocame .nm .n{text-decoration:line-through}
 .turno.nocame .act{background:var(--no-bg);color:var(--mut)}
 .turno.late{box-shadow:inset 0 0 0 1px var(--silla)}
 .turno.paid-anim{animation:paidPulse .7s ease-out}
 .agenda.noanim .turno:not(.paid-anim){animation:none}   /* al refrescar en el lugar, las tarjetas no vuelven a "entrar" */
 .turno.compact .sv{display:none}
+.turno.narrow .sv{display:none}   /* dos turnos a la misma hora: cada tarjeta tiene la mitad del ancho */
+.turno.narrow .act{font-size:0;min-width:40px;padding:0 8px;gap:0}
+.turno.narrow .av{display:none}
 .turno.compact .nm{font-size:14px}
 @media (max-width:600px){
   .turno{gap:6px;padding-right:4px}
@@ -123,8 +131,9 @@
 .hoy-grid{display:block}
 .aside{display:none}
 @media (min-width:900px){
-  .hoy-grid{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:20px;align-items:start}
-  .aside{display:flex;flex-direction:column;gap:12px;position:sticky;top:76px}
+  .hoy-grid{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:20px;align-items:start;padding:0 24px}
+  .hoy-head{padding-left:0;padding-right:0}
+  .aside{display:flex;flex-direction:column;gap:12px;position:sticky;top:153px;max-height:calc(100vh - 153px);overflow-y:auto}   /* 153 = 66 top-row + 74 weekstrip + 1 borde + 12 */
   .stats{display:none}
   .quick{display:none}
   .agenda{margin:0 0 20px}
@@ -215,7 +224,7 @@ textarea.field{height:auto;min-height:72px;padding:10px 14px;resize:vertical;fon
 .pricebox{display:flex;align-items:center;gap:10px;margin-top:4px}
 .pricebox .money{flex:1;min-width:0;width:0;height:56px;border:1.5px solid var(--line2);border-radius:12px;font-size:30px;font-weight:800;text-align:right;padding:0 14px;font-variant-numeric:tabular-nums;letter-spacing:-.02em;background:var(--card)}
 .pricebox .money:focus{border-color:var(--red);box-shadow:0 0 0 3px rgba(179,48,43,.15)}
-.pricebox .sug{font-size:12px;color:var(--mut);width:88px;line-height:1.25}
+.pricebox .sug{font-size:12px;color:var(--mut);width:88px;line-height:1.25;cursor:pointer;user-select:none}
 .pricebox .sug b{display:block;color:var(--ink);font-size:13px}
 .keypad{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:8px}
 .keypad button{height:50px;border-radius:12px;background:var(--card2);border:1px solid var(--line);font-size:22px;font-weight:600;transition:background .1s,transform .1s;font-variant-numeric:tabular-nums}
@@ -228,9 +237,10 @@ textarea.field{height:auto;min-height:72px;padding:10px 14px;resize:vertical;fon
 .seg button svg{width:17px;height:17px}
 .seg button.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 .seg button.on.ok{background:var(--ok);border-color:var(--ok);color:#fff}
-.seg button.on.silla{background:var(--silla);border-color:var(--silla);color:#1a1200}
-.seg button.on.no{background:var(--no);border-color:var(--no);color:#fff}
+.seg button.on.silla{background:var(--silla);border-color:var(--silla);color:var(--silla-ink)}
+.seg button.on.no{background:var(--no);border-color:var(--no);color:#17161a}
 .seg button.on.online{background:var(--online);border-color:var(--online);color:#fff}
+html[data-theme=dark] .seg button.on.ok,html[data-theme=dark] .seg button.on.online,html[data-theme=dark] .btn.ok{color:#0e0e11}   /* en oscuro --ok y --online son claros: tinta oscura */
 .seg.wrap{flex-wrap:wrap}
 .seg.wrap button{flex:1 1 30%}
 .extras{display:flex;gap:8px;flex-wrap:wrap}

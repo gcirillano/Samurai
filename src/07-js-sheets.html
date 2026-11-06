@@ -3,13 +3,13 @@
    JS · PARTE 3: SHEETS (panel inferior): alta/edición de turno, menú,
    ficha de cliente, gasto, producto, servicios y ajustes
    ===================================================================== */
-var sheetOpen=false;
+var sheetOpen=false,sheetOnClose=null;   // sheetOnClose: closeSheet lo ejecuta una sola vez (vuelta al alta desde "editar precios")
 function openSheet(html){
-  var s=$('#sheet');s.innerHTML=html;$('#sheetBg').classList.add('on');sheetOpen=true;hideToast();s.scrollTop=0;var sc=$('.sc',s);if(sc)sc.scrollTop=0;
+  var s=$('#sheet');s.innerHTML=html;$('#sheetBg').classList.add('on');sheetOpen=true;sheetOnClose=null;hideToast();s.scrollTop=0;var sc=$('.sc',s);if(sc)sc.scrollTop=0;
   $$('[data-close]',s).forEach(function(b){b.onclick=closeSheet});
   var af=$('[data-af]',s);if(af&&window.innerWidth>=900)setTimeout(function(){af.focus()},50);   // en celular no se abre el teclado solo
 }
-function closeSheet(){if(!sheetOpen)return;$('#sheetBg').classList.remove('on');sheetOpen=false}
+function closeSheet(){if(!sheetOpen)return;$('#sheetBg').classList.remove('on');sheetOpen=false;var f=sheetOnClose;sheetOnClose=null;if(f)f()}
 function sheetFrame(title,sub,body,footer){
   return '<div class="handle"></div><div class="sh"><h2>'+title+(sub?'<span class="sub">'+sub+'</span>':'')+'</h2><button type="button" class="ibtn" data-close aria-label="Cerrar">'+icon('x')+'</button></div><div class="sc">'+body+'</div>'+(footer?'<div class="sf">'+footer+'</div>':'');
 }
@@ -21,12 +21,11 @@ function digitsOf(s){return String(s).replace(/\D/g,'')}
 // ---------- ALTA / EDICIÓN DE TURNO ----------
 // Meta: 3 toques. Tocar un hueco (1) → tocar el nombre sugerido (2) → Guardar (3).
 var A=null;
-function sheetAlta(o){
+function sheetAlta(o,prev){   // prev: el A que había al salir a "editar precios"; se restaura tal cual (nombre, hora, precio, estado, extras)
   o=o||{};var t=o.id?turnoById(o.id):null,hoy=hoyIso();
-  A=t?{id:t.id,fecha:t.fecha,hora:toMin(t.hora),dur:t.dur||30,nombre:t.nombre,servicio:t.servicio,precio:t.precio,pago:t.pago,estado:t.estado,origen:t.origen,propina:t.propina||0,nota:t.nota||'',fresh:true}
-     :{id:null,fecha:o.fecha||ui.fecha,hora:toMin(o.hora||'10:00'),dur:30,nombre:o.nombre||'',servicio:db.servicios[0].n,precio:db.servicios[0].p,pago:'',estado:o.enSilla?'silla':'confirmado',origen:'local',propina:0,nota:'',fresh:true};
-  A.ventas=(A.id?db.ventas.filter(function(v){return v.turnoId===A.id}):[]).map(function(v){return {prodId:v.prodId,nombre:v.nombre,precio:v.precio,id:v.id}});
-  A.ventasQuitar=[];
+  A=prev||(t?{id:t.id,fecha:t.fecha,hora:toMin(t.hora),dur:t.dur||30,nombre:t.nombre,servicio:t.servicio,precio:t.precio,pago:t.pago,estado:t.estado,origen:t.origen,propina:t.propina||0,nota:t.nota||'',fresh:true}
+     :{id:null,fecha:o.fecha||ui.fecha,hora:toMin(o.hora||'10:00'),dur:30,nombre:o.nombre||'',servicio:db.servicios[0].n,precio:db.servicios[0].p,pago:'',estado:o.enSilla?'silla':'confirmado',origen:'local',propina:0,nota:'',fresh:true});
+  if(!prev){A.ventas=(A.id?db.ventas.filter(function(v){return v.turnoId===A.id}):[]).map(function(v){return {prodId:v.prodId,nombre:v.nombre,precio:v.precio,id:v.id}});A.ventasQuitar=[]}
   var svc=db.servicios.map(function(s,i){return '<button type="button" class="svc" data-svc="'+i+'"><b>'+esc(s.n)+'</b><small>'+money(s.p)+'</small></button>'}).join('');
   var body='<span class="lbl">Horario · '+fechaCorta(A.fecha)+'</span>'
     +'<div class="timebar"><button type="button" class="st" data-dm="-30">−30</button><button type="button" class="st" data-dm="-5">−5</button><input class="t" id="aHora" inputmode="numeric" aria-label="Hora" value="'+hm(A.hora)+'"><button type="button" class="st" data-dm="5">+5</button><button type="button" class="st" data-dm="30">+30</button></div>'
@@ -34,7 +33,7 @@ function sheetAlta(o){
     +'<span class="lbl">Cliente</span><input class="field" id="aNombre" placeholder="Nombre o apodo" autocomplete="off" autocapitalize="words" value="'+esc(A.nombre)+'" data-af>'
     +'<div class="chips scroll" id="aSug" style="margin-top:8px"></div><div id="aHint"></div>'
     +'<span class="lbl">Servicio <span class="r" id="aEditSvc">editar precios</span></span><div class="services" id="aSvc">'+svc+'</div>'
-    +'<span class="lbl">Precio</span><div class="pricebox"><input class="money num" id="aPrecio" inputmode="none" aria-label="Precio" value="'+money(A.precio).slice(1)+'"><div class="sug" id="aPrecioSug"></div></div>'
+    +'<span class="lbl">Precio</span><div class="pricebox"><input class="money num" id="aPrecio" inputmode="none" aria-label="Precio" placeholder="0" value="'+money(A.precio).slice(1)+'"><div class="sug" id="aPrecioSug"></div></div>'
     +'<div class="keypad" id="aPad">'+['1','2','3','4','5','6','7','8','9','000','0','del'].map(function(k){return k==='del'?'<button type="button" class="fn" data-k="del" aria-label="Borrar">'+icon('left')+'</button>':'<button type="button" data-k="'+k+'">'+k+'</button>'}).join('')+'</div>'
     +'<span class="lbl">Pago</span><div class="seg" id="aPago"><button type="button" class="ok" data-p="efectivo">'+icon('cash')+'Efectivo</button><button type="button" class="ok" data-p="transferencia">'+icon('transfer')+'Transferencia</button><button type="button" data-p="">Sin cobrar</button></div>'
     +'<span class="lbl">Estado</span><div class="seg wrap" id="aEstado">'+(A.origen==='online'?'<button type="button" class="online" data-e="reservado">'+icon('globe')+'Reserva</button>':'')+'<button type="button" data-e="confirmado">Confirmado</button><button type="button" class="silla" data-e="silla">'+icon('chair')+'En silla</button><button type="button" class="ok" data-e="cobrado">'+icon('check')+'Cobrado</button><button type="button" class="no" data-e="nocame">'+icon('ghost')+'Faltó</button></div>'
@@ -45,29 +44,31 @@ function sheetAlta(o){
   var s=$('#sheet');
   // horario
   $$('[data-dm]',s).forEach(function(b){b.onclick=function(){A.hora=Math.max(0,Math.min(23*60+55,A.hora+(+b.getAttribute('data-dm'))));$('#aHora').value=hm(A.hora)}});
-  $('#aHora').onchange=function(){var m=parseHora(this.value);if(m==null){this.classList.add('shake');this.value=hm(A.hora);setTimeout(function(){$('#aHora').classList.remove('shake')},300)}else{A.hora=m;this.value=hm(m)}};
+  $('#aHora').onchange=function(){var m=parseHora(this.value);if(m==null){this.classList.add('shake');this.value=hm(A.hora);setTimeout(function(){var h=$('#aHora');if(h)h.classList.remove('shake')},300)}else{A.hora=m;this.value=hm(m)}};
   $$('[data-dur]',s).forEach(function(b){b.onclick=function(){A.dur=+b.getAttribute('data-dur');pintarAlta()}});
   // cliente
   var inp=$('#aNombre');inp.oninput=function(){A.nombre=inp.value;pintarSug();pintarHint()};
   // servicios y precio
   $$('[data-svc]',s).forEach(function(b){b.onclick=function(){var sv=db.servicios[+b.getAttribute('data-svc')];A.servicio=sv.n;A.precio=sv.p;if(sv.dur)A.dur=sv.dur;A.fresh=true;pintarAlta()}});
-  $('#aEditSvc').onclick=function(){sheetServicios(function(){sheetAlta(o)})};
+  $('#aEditSvc').onclick=function(){var prev=A,oldP=(db.servicios.filter(function(x){return x.n===prev.servicio})[0]||{}).p;sheetServicios(function(){var sv=db.servicios.filter(function(x){return x.n===prev.servicio})[0];if(!sv&&oldP!=null){sv=db.servicios[0];prev.servicio=sv.n;if(sv.dur)prev.dur=sv.dur}if(sv&&prev.precio===oldP){prev.precio=sv.p;prev.fresh=true}sheetAlta(o,prev)})};   // vuelve con lo tipeado; sigue el precio de lista solo si no lo tocaron
   var pre=$('#aPrecio');
   pre.oninput=function(){A.precio=+digitsOf(pre.value)||0;A.fresh=false;pintarAlta(true)};
-  pre.onfocus=function(){A.fresh=true};
-  $$('[data-k]',s).forEach(function(b){b.onclick=function(){var k=b.getAttribute('data-k'),d=A.fresh?'':String(A.precio||'');
+  pre.onkeypress=function(e){if(e.key&&e.key.length===1&&!/\d/.test(e.key))e.preventDefault()};   // en PC no entran letras ni comas
+  pre.onchange=function(){pintarAlta()};   // al salir del campo se ve el número como lo entendió la app
+  pre.onfocus=function(){A.fresh=true;if(window.innerWidth>=900)setTimeout(function(){pre.select()},0)};   // en PC tipear reemplaza, como el teclado
+  $$('[data-k]',s).forEach(function(b){b.onclick=function(){var k=b.getAttribute('data-k'),d=(A.fresh&&k!=='del')?'':String(A.precio||'');   // ⌫ con precio fresco borra solo el último dígito
     if(k==='del')d=d.slice(0,-1);else if(d.length<9)d+=k;A.precio=+d||0;A.fresh=false;pintarAlta()}});
   // pago y estado (se mantienen coherentes entre sí)
   $$('[data-p]',s).forEach(function(b){b.onclick=function(){var p=b.getAttribute('data-p');A.pago=p;
     if(p){A.estado='cobrado'}else if(A.estado==='cobrado'){A.estado=(A.fecha===hoy&&A.hora<=ahoraMin())?'silla':'confirmado'}pintarAlta()}});
   $$('[data-e]',s).forEach(function(b){b.onclick=function(){var e=b.getAttribute('data-e');A.estado=e;
-    if(e==='cobrado'){if(!A.pago)A.pago=statsCliente(A.nombre).pagoHab||'efectivo'}else A.pago='';pintarAlta()}});
+    if(e==='cobrado'){if(!A.pago)A.pago=statsCliente(nombreCanonico(A.nombre)).pagoHab||'efectivo'}else A.pago='';pintarAlta()}});
   // guardar / borrar
   $('#aGuardar').onclick=guardarAlta;
   if(A.id)$('#aBorrar').onclick=function(){var id=A.id;closeSheet();borrarTurno(id)};
   $('#aNota').oninput=function(){A.nota=this.value};
   inp.onkeydown=function(e){if(e.key==='Enter'){e.preventDefault();guardarAlta()}};
-  if(!A.id&&A.nombre)elegirCliente(A.nombre);else{pintarAlta();pintarSug();pintarHint()}   // desde la ficha: precio y servicio habituales
+  if(!prev&&!A.id&&A.nombre)elegirCliente(A.nombre);else{pintarAlta();pintarSug();pintarHint()}   // desde la ficha: precio y servicio habituales; al volver de "editar precios" no se pisa lo tipeado
 }
 function pintarAlta(skipPrecio){
   var s=$('#sheet');
@@ -76,8 +77,9 @@ function pintarAlta(skipPrecio){
   if(!skipPrecio)$('#aPrecio').value=A.precio?money(A.precio).slice(1):'';
   $$('[data-p]',s).forEach(function(b){b.classList.toggle('on',b.getAttribute('data-p')===A.pago)});
   $$('[data-e]',s).forEach(function(b){b.classList.toggle('on',b.getAttribute('data-e')===A.estado)});
-  var st=A.nombre?statsCliente(A.nombre):null;
-  $('#aPrecioSug').innerHTML=(st&&st.n&&st.precioHab!==A.precio)?'último pago<b>'+money(st.precioHab)+'</b>':(st&&st.n?'mismo precio<b>que la última vez</b>':'precio de lista<b>'+money((db.servicios.filter(function(x){return x.n===A.servicio})[0]||{p:0}).p)+'</b>');
+  var st=A.nombre?statsCliente(nombreCanonico(A.nombre)):null,lista=(db.servicios.filter(function(x){return x.n===A.servicio})[0]||{p:0}).p,sugP=(st&&st.n)?st.precioHab:lista;
+  $('#aPrecioSug').innerHTML=(st&&st.n&&st.precioHab!==A.precio)?'último pago<b>'+money(st.precioHab)+'</b>':(st&&st.n?'mismo precio<b>que la última vez</b>':'precio de lista<b>'+money(lista)+'</b>');
+  $('#aPrecioSug').onclick=function(){if(sugP&&sugP!==A.precio){A.precio=sugP;A.fresh=true;pintarAlta();vibrar(8)}};   // tocar el cartel pone ese precio
   // extras: propina y productos
   var ex='';[1000,2000,5000].forEach(function(p){ex+='<button type="button" class="chip plain'+(A.propina===p?' tipon':'')+'" data-tip="'+p+'">'+icon('tip')+'+'+money(p)+'</button>'});
   db.productos.forEach(function(p){var sold=A.ventas.filter(function(v){return v.prodId===p.id}).length;
@@ -102,28 +104,42 @@ function elegirCliente(n){
 }
 function pintarHint(){
   var n=(A.nombre||'').trim(),el=$('#aHint');if(!n){el.innerHTML='';return}
-  var st=statsCliente(n);
+  var st=statsCliente(nombreCanonico(n));
   if(!st.n&&!st.faltas.length){el.innerHTML='<div class="hint">'+icon('clientes')+'<span>Cliente nuevo. Con este turno se le arma la ficha sola.</span></div>';return}
   var txt='<b>'+st.n+' visita'+(st.n===1?'':'s')+'</b>'+(st.ritmo?' · viene cada ~'+st.ritmo+' días':'')+(st.ultima?' · última '+haceDias(st.desde)+': '+esc(st.ultima.servicio)+' '+money(st.ultima.precio)+' ('+(st.ultima.pago||'sin cobrar')+')':'');
   if(st.reincidente)txt+=' · <b style="color:var(--red)">faltó '+st.faltas.length+' veces</b>';
   el.innerHTML='<div class="hint'+(st.reincidente?' warn':'')+'">'+avatar(n,'sm')+'<span>'+txt+'</span></div>';
 }
 function guardarAlta(){
-  var n=nombreCanonico((A.nombre||'').trim()),inp=$('#aNombre');
+  var t=A.id?turnoById(A.id):null,viejo=t?t.nombre:null,inp=$('#aNombre');
+  var n=(A.nombre||'').trim().replace(/\s+/g,' ');
+  if(!(viejo&&viejo!==n&&viejo.toLowerCase()===n.toLowerCase()))n=nombreCanonico(n);   // si solo cambian mayúsculas es la misma persona: no se vuelve al nombre viejo
   if(!n){inp.classList.add('shake');inp.focus();setTimeout(function(){inp.classList.remove('shake')},300);return}
+  if(!A.precio){var pr=$('#aPrecio');pr.classList.add('shake');pr.focus();setTimeout(function(){pr.classList.remove('shake')},300);return}
   var hm_=parseHora($('#aHora').value);if(hm_!=null)A.hora=hm_;
   if(A.estado==='cobrado'&&!A.pago)A.pago=statsCliente(n).pagoHab||'efectivo';
-  var t=A.id?turnoById(A.id):null,nuevo=!t;
+  var nuevo=!t;
   if(!t){t={id:uid(),origen:A.origen};db.turnos.push(t)}
   t.fecha=A.fecha;t.hora=hm(A.hora);t.dur=A.dur;t.nombre=n;t.servicio=A.servicio;t.precio=A.precio||0;t.pago=A.pago;t.estado=A.estado;t.propina=A.propina||0;t.nota=A.nota||'';
+  if(viejo&&viejo!==n){ // cambió el nombre del turno
+    if(viejo.toLowerCase()===n.toLowerCase()){ // misma persona, sólo cambian mayúsculas: renombrar en todos lados
+      db.turnos.forEach(function(x){if(x.nombre===viejo)x.nombre=n});
+      db.ventas.forEach(function(v){if(v.cliente===viejo)v.cliente=n});
+      if(db.clientes[viejo]){var c0=db.clientes[n]||(db.clientes[n]={tel:'',notas:''}),o0=db.clientes[viejo];if(!c0.tel)c0.tel=o0.tel||'';if(!c0.notas)c0.notas=o0.notas||'';delete db.clientes[viejo]}
+    }else{ // otro nombre: mover sólo lo de este turno; si el viejo queda sin turnos, su tel y notas pasan al nuevo (si estaba vacío)
+      db.ventas.forEach(function(v){if(v.turnoId===t.id)v.cliente=n});
+      if(!db.turnos.some(function(x){return x.nombre===viejo})&&db.clientes[viejo]){var c1=db.clientes[n]||(db.clientes[n]={tel:'',notas:''}),o1=db.clientes[viejo];if(!c1.tel)c1.tel=o1.tel||'';if(!c1.notas)c1.notas=o1.notas||'';delete db.clientes[viejo]}   // se rescata lo que el nuevo no tenga
+    }
+  }
   // ventas de productos asociadas al turno
   A.ventasQuitar.forEach(function(id){var v=db.ventas.filter(function(x){return x.id===id})[0];if(v){var p=prodById(v.prodId);if(p)p.stock+=v.cant;db.ventas=db.ventas.filter(function(x){return x.id!==id})}});
-  A.ventas.forEach(function(v){if(v.id)return;var p=prodById(v.prodId);if(p)p.stock=Math.max(0,p.stock-1);db.ventas.push({id:uid(),fecha:t.fecha,hora:t.hora,prodId:v.prodId,nombre:v.nombre,precio:v.precio,cant:1,pago:t.pago||'efectivo',turnoId:t.id,cliente:n})});
+  A.ventas.forEach(function(v){if(v.id)return;var p=prodById(v.prodId);if(p)p.stock=Math.max(0,p.stock-1);db.ventas.push({id:uid(),fecha:t.fecha,hora:t.hora,prodId:v.prodId,nombre:v.nombre,precio:v.precio,cant:1,pago:t.pago||'',turnoId:t.id,cliente:n})});
+  db.ventas.forEach(function(v){if(v.turnoId===t.id){v.pago=t.pago||'';v.fecha=t.fecha;v.hora=t.hora}});   // las ventas del turno siguen su pago, fecha y hora (sin cobrar no cuentan)
   if(!db.clientes[n])db.clientes[n]={tel:'',notas:''};
   save();closeSheet();
   if(ui.view==='hoy'&&ui.fecha!==t.fecha){ui.fecha=t.fecha}
   if(t.estado==='cobrado'&&nuevo&&ui.view==='hoy')renderHoy({paid:t.id,keepScroll:true});else refrescar();
-  toast((nuevo?'Turno anotado':'Turno guardado')+' · '+t.hora+' '+esc(n)+(t.estado==='cobrado'?' · '+money(t.precio):''));
+  toast((nuevo?'Turno anotado':'Turno guardado')+' · '+t.hora+' '+esc(n)+' · '+money(t.precio));
 }
 
 // ---------- MENÚ CONTEXTUAL DEL TURNO (mantener presionado / botón ⋯ / clic derecho) ----------
@@ -141,7 +157,7 @@ function sheetMenuTurno(id){
   openSheet(sheetFrame(esc(t.nombre),t.hora+' · '+esc(t.servicio)+' · '+money(t.precio)+(t.estado==='cobrado'?' · cobrado':''),body,''));
   $$('#sheet [data-m]').forEach(function(b){b.onclick=function(){var m=b.getAttribute('data-m');closeSheet();
     if(m==='silla')setEstado(id,'silla');else if(m==='cobrar-efectivo')cobrar(id,'efectivo');else if(m==='cobrar-transferencia')cobrar(id,'transferencia');
-    else if(m==='cambiar-pago'){t.pago=t.pago==='efectivo'?'transferencia':'efectivo';save();refrescar();toast('Pago: '+t.pago)}
+    else if(m==='cambiar-pago'){t.pago=t.pago==='efectivo'?'transferencia':'efectivo';db.ventas.forEach(function(v){if(v.turnoId===id)v.pago=t.pago});save();refrescar();toast('Pago: '+t.pago)}   // los productos del turno siguen su pago
     else if(m==='nocame')setEstado(id,'nocame');else if(m==='confirmado')setEstado(id,'confirmado');
     else if(m==='editar')sheetAlta({id:id});else if(m==='ficha')sheetFicha(t.nombre);else if(m==='borrar')borrarTurno(id)}});
 }
@@ -207,7 +223,7 @@ function sheetGasto(){
   $('#gOtro').oninput=function(){G.concepto=this.value};
   $$('#sheet [data-k]').forEach(function(b){b.onclick=function(){var k=b.getAttribute('data-k'),d=String(G.monto||'');if(k==='del')d=d.slice(0,-1);else if(d.length<9)d+=k;G.monto=+d||0;pintar()}});
   $('#gMonto').oninput=function(){G.monto=+digitsOf(this.value)||0};
-  $('#gOk').onclick=function(){if(!G.concepto){$('#gConc').classList.add('shake');setTimeout(function(){$('#gConc').classList.remove('shake')},300);return}if(!G.monto){$('#gMonto').classList.add('shake');setTimeout(function(){$('#gMonto').classList.remove('shake')},300);return}
+  $('#gOk').onclick=function(){if(!G.concepto){$('#gConc').classList.add('shake');setTimeout(function(){var c=$('#gConc');if(c)c.classList.remove('shake')},300);return}if(!G.monto){$('#gMonto').classList.add('shake');setTimeout(function(){var m=$('#gMonto');if(m)m.classList.remove('shake')},300);return}
     db.gastos.push({id:uid(),fecha:hoyIso(),concepto:G.concepto,monto:G.monto});save();closeSheet();refrescar();toast('Gasto anotado: '+esc(G.concepto)+' '+money(G.monto))};
 }
 
@@ -246,8 +262,9 @@ function sheetServicios(despues){
   }
   openSheet(sheetFrame('Servicios y precios','Se escriben una vez y quedan',"<div class='list' id='svcList'></div><button type='button' class='btn sm ghost full' id='svcAdd' style='margin-top:10px'>"+icon('plus')+"Agregar servicio</button>",'<button type="button" class="btn pri" id="svcOk">'+icon('check')+'Guardar precios</button>'));
   pintar();
+  if(despues)sheetOnClose=despues;   // cerrar con X, fondo o Esc también vuelve al alta
   $('#svcAdd').onclick=function(){S.push({n:'',p:0,dur:30});pintar();var l=$$('#svcList [data-sn]');l[l.length-1].focus()};
-  $('#svcOk').onclick=function(){db.servicios=S.filter(function(s){return s.n.trim()}).map(function(s){return {n:s.n.trim(),p:s.p,dur:s.dur}});if(!db.servicios.length)db.servicios=[{n:'Corte',p:18000,dur:30}];save();closeSheet();if(despues)despues();else refrescar();toast('Precios guardados')};
+  $('#svcOk').onclick=function(){db.servicios=S.filter(function(s){return s.n.trim()}).map(function(s){return {n:s.n.trim(),p:s.p,dur:s.dur}});if(!db.servicios.length)db.servicios=[{n:'Corte',p:18000,dur:30}];save();sheetOnClose=null;closeSheet();if(despues)despues();else refrescar();toast('Precios guardados')};
 }
 
 // ---------- AJUSTES / MÁS ----------

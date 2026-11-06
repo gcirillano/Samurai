@@ -53,8 +53,16 @@ function mode(arr){var c={},best=null,bn=0;arr.forEach(function(v){c[v]=(c[v]||0
 
 // ---------- estado y persistencia ----------
 var db=null, _cli=null;        // _cli: índice de clientes (cache, se invalida al guardar)
-function save(){db.modified=true;_cli=null;try{localStorage.setItem(DB_KEY,JSON.stringify(db))}catch(e){}}
-function load(){try{var r=localStorage.getItem(DB_KEY);if(r){var o=JSON.parse(r);if(o&&o.v===3)return o}}catch(e){}return null}
+var _sinGuardar=false, _loadError=null, _loadRaw=null;   // storage: alert ya mostrado · por qué falló load ('bloqueado'|'corrupto'|'version') · string crudo leído (init lo respalda)
+function save(){db.modified=true;_cli=null;try{localStorage.setItem(DB_KEY,JSON.stringify(db))}catch(e){avisarSinGuardar()}}
+function load(){_loadError=null;_loadRaw=null;var r=null;try{r=localStorage.getItem(DB_KEY)}catch(e){_loadError='bloqueado';return null}
+  if(!r)return null;_loadRaw=r;var o=null;try{o=JSON.parse(r)}catch(e){}
+  if(o&&o.v===3)return o;_loadError=(o&&typeof o==='object')?'version':'corrupto';return null}
+function avisarSinGuardar(){ // localStorage falló: aviso fijo en el header (sobrevive a openSheet/hideToast) y alert una sola vez por sesión
+  var t=$('#topTitle');if(t){t.textContent='No se está guardando';t.style.color='var(--red)';t.style.display='block'}
+  if(_sinGuardar)return;_sinGuardar=true;
+  alert('Este navegador no deja guardar los datos: lo que cargues se pierde al cerrar la pestaña. Exportá a planilla (Más > Exportar) antes de cerrar y revisá en Chrome que no estén bloqueados los datos de sitios.');
+}
 function borrarTodo(){db=seedVacio();_cli=null;try{localStorage.setItem(DB_KEY,JSON.stringify(db))}catch(e){}}
 function turnoById(id){for(var i=0;i<db.turnos.length;i++)if(db.turnos[i].id===id)return db.turnos[i];return null}
 function turnosDe(f){return db.turnos.filter(function(t){return t.fecha===f}).sort(byHora)}
@@ -80,11 +88,12 @@ function statsCliente(nombre){
   var faltas=ts.filter(function(t){return t.estado==='nocame'});
   var futuros=ts.filter(function(t){return t.fecha>hoy&&t.estado!=='nocame'});
   var hoyT=ts.filter(function(t){return t.fecha===hoy&&t.estado!=='nocame'&&t.estado!=='cobrado'});
+  var pend=ts.filter(function(t){return t.fecha<hoy&&(t.estado==='confirmado'||t.estado==='reservado')});   // pasados sin cobrar ni marcar
   var n=visitas.length, ult=n?visitas[n-1]:null, prim=n?visitas[0]:null;
   var gaps=[];for(var i=Math.max(1,n-6);i<n;i++){var g=diffDias(visitas[i-1].fecha,visitas[i].fecha);if(g>0)gaps.push(g)}
   var ritmo=gaps.length?Math.round(gaps.reduce(function(a,b){return a+b},0)/gaps.length):null;
   var ult5=visitas.slice(-5);
-  var precioHab=ult?ult.precio:0, servHab=ult5.length?mode(ult5.map(function(t){return t.servicio})):'', pagoHab=ult5.length?(mode(ult5.map(function(t){return t.pago}).filter(Boolean))||'efectivo'):'efectivo';
+  var pagas=visitas.filter(function(t){return t.precio>0}), precioHab=pagas.length?pagas[pagas.length-1].precio:0, servHab=ult5.length?mode(ult5.map(function(t){return t.servicio})):'', pagoHab=ult5.length?(mode(ult5.map(function(t){return t.pago}).filter(Boolean))||'efectivo'):'efectivo';
   var total=visitas.reduce(function(s,t){return s+t.precio+(t.propina||0)},0);
   var ventas=db.ventas.filter(function(v){return v.cliente===nombre});
   total+=ventas.reduce(function(s,v){return s+v.precio*v.cant},0);
@@ -94,7 +103,7 @@ function statsCliente(nombre){
   var estado='nuevo';
   if(n>=2&&ritmo){ if(atraso>7)estado='late'; else if(atraso>=-3)estado='due'; else estado='ok'; }
   else if(n===1){ estado=desde>45?'late':'ok'; }
-  return {nombre:nombre,visitas:visitas,faltas:faltas,futuros:futuros,hoy:hoyT,n:n,ultima:ult,primera:prim,ritmo:ritmo,
+  return {nombre:nombre,visitas:visitas,faltas:faltas,futuros:futuros,hoy:hoyT,pendientes:pend,n:n,ultima:ult,primera:prim,ritmo:ritmo,
     precioHab:precioHab,servHab:servHab,pagoHab:pagoHab,total:total,ventas:ventas,desde:desde,atraso:atraso,estado:estado,
     tel:ext.tel||'',notas:ext.notas||'',reincidente:faltas.length>=2,
     proximaSugerida:(ult&&ritmo)?iso(addDays(fromIso(ult.fecha),ritmo)):null};
@@ -102,7 +111,7 @@ function statsCliente(nombre){
 function listaClientes(){return Object.keys(clientesIndex()).map(statsCliente)}
 function sugerirClientes(q,max){
   q=(q||'').trim().toLowerCase();
-  var l=listaClientes().filter(function(c){return c.n+c.futuros.length+c.hoy.length>0||c.faltas.length});
+  var l=listaClientes().filter(function(c){return c.n+c.futuros.length+c.hoy.length>0||c.faltas.length||c.pendientes.length});
   if(q)l=l.filter(function(c){return c.nombre.toLowerCase().indexOf(q)>=0});
   l.sort(function(a,b){ // los que "tocan" volver primero, después los más frecuentes y recientes
     var sa=(a.estado==='due'||a.estado==='late'?2:0)+(a.n>=4?1:0), sb=(b.estado==='due'||b.estado==='late'?2:0)+(b.n>=4?1:0);
@@ -122,7 +131,9 @@ function totalesDia(f){
     else if(t.estado==='nocame')r.faltas++;
     else r.porCobrar+=t.precio;
   });
-  vs.forEach(function(v){r.productos+=v.precio*v.cant;r[v.pago==='transferencia'?'transferencia':'efectivo']+=v.precio*v.cant});
+  vs.forEach(function(v){ // atada a un turno que existe y no está cobrado: no cuenta todavía (al cobrarlo hereda su pago)
+    var tv=v.turnoId?turnoById(v.turnoId):null;if(tv&&tv.estado!=='cobrado'){if(tv.estado!=='nocame')r.porCobrar+=v.precio*v.cant;return}   // mientras tanto va a "A cobrar"
+    r.productos+=v.precio*v.cant;r[v.pago==='transferencia'?'transferencia':'efectivo']+=v.precio*v.cant});
   gs.forEach(function(g){r.gastos+=g.monto});
   r.ingresos=r.cobrado+r.propinas+r.productos;r.balance=r.ingresos-r.gastos;
   return r;
@@ -154,7 +165,7 @@ function exportarClientes(){
 function exportarCaja(){
   var filas=[['Fecha','Hora','Tipo','Detalle','Cliente','Monto','Forma de pago','Estado']];
   db.turnos.slice().sort(byFechaHora).forEach(function(t){filas.push([t.fecha,t.hora,'Turno',t.servicio,t.nombre,t.estado==='cobrado'?t.precio+(t.propina||0):0,t.pago,ESTADOS[t.estado]])});
-  db.ventas.forEach(function(v){filas.push([v.fecha,v.hora,'Producto',v.nombre+(v.cant>1?' x'+v.cant:''),v.cliente||'',v.precio*v.cant,v.pago,'Vendido'])});
+  db.ventas.forEach(function(v){var tv=v.turnoId?turnoById(v.turnoId):null,pend=!!(tv&&tv.estado!=='cobrado');filas.push([v.fecha,v.hora,'Producto',v.nombre+(v.cant>1?' x'+v.cant:''),v.cliente||'',pend?0:v.precio*v.cant,v.pago,pend?(tv.estado==='nocame'?'Faltó':'Sin cobrar'):'Vendido'])});   // mismo criterio que Caja
   db.gastos.forEach(function(g){filas.push([g.fecha,'','Gasto',g.concepto,'',-g.monto,'',''])});
   descargarCSV('samurai-caja-'+hoyIso()+'.csv',filas);
 }
