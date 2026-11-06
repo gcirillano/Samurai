@@ -146,7 +146,7 @@ svg{display:block}
   .stats{grid-template-columns:repeat(3,1fr);gap:6px}
   .stat{padding:7px 8px}
   .stat b{font-size:15px}
-  .stat.ok b{font-size:20px}
+  .stats .stat.ok b{font-size:20px}   /* solo el Facturado de Hoy; el de Semana (.week-sum) queda en 15px */
   .stat.prox{display:none}
   .prox-inline{display:inline}
   .prox-inline b{color:var(--ink);font-size:15px}
@@ -246,7 +246,7 @@ html[data-theme=dark] .tag.warn,html[data-theme=dark] .hint.warn{color:#f08a82} 
 @media (min-width:900px){
   .hoy-grid{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:20px;align-items:start;padding:0 24px}
   .hoy-head{padding-left:0;padding-right:0}
-  .aside{display:flex;flex-direction:column;gap:12px;position:sticky;top:153px;max-height:calc(100vh - 153px);overflow-y:auto}   /* 153 = 66 top-row + 74 weekstrip + 1 borde + 12 */
+  .aside{display:flex;flex-direction:column;gap:12px;position:sticky;top:153px;max-height:calc(100vh - 153px);overflow-y:auto;padding-bottom:24px;margin-bottom:-24px}   /* 153 = 66 top-row + 74 weekstrip + 1 borde + 12; padding + margen negativo: lugar para la sombra del último panel sin agrandar la fila */
   .stats{display:none}
   .quick{display:none}
   .agenda{margin:0 0 20px}
@@ -279,8 +279,10 @@ html[data-theme=dark] .tag.warn,html[data-theme=dark] .hint.warn{color:#f08a82} 
 .next-card .sv{font-size:13px;color:var(--mut)}
 .next-card .in{font-size:13px;font-weight:700;color:var(--silla);white-space:nowrap}
 .empty{padding:40px 16px;text-align:center;color:var(--mut);font-size:14px}
-.empty svg{width:40px;height:40px;margin:0 auto 10px;opacity:.5}
+.empty svg{display:block;width:40px;height:40px;margin:0 auto 10px;opacity:.5}   /* en bloque: inline, el margin auto no centra */
 .hoy-grid .empty{padding:8px 16px 6px}
+.hoy-grid .empty svg{display:inline-block;vertical-align:middle;margin:0 8px 0 0}   /* en Hoy es una tira arriba de la grilla: ícono y texto en una línea */
+@media (min-width:900px){.hoy-grid .empty{padding-left:0;padding-right:0}}   /* alineado con la agenda, como .hoy-head; va después de la regla de arriba para ganarle */
 
 /* ---------- 4) Sheet (panel inferior) ---------- */
 .sheet-bg{position:fixed;left:0;top:0;right:0;bottom:0;background:rgba(10,8,6,.45);z-index:40;opacity:0;visibility:hidden;transition:opacity .25s,visibility .25s;display:flex;align-items:flex-end;justify-content:center}
@@ -985,7 +987,7 @@ function updateNow(){
   if(!esHoy||m<ini||m>fin){nl.style.display='none';return}
   nl.style.display='block';nl.style.top=((m-ini)/30*SLOT_H)+'px';$('#nowLbl').textContent=hm(m);
 }
-setInterval(function(){var h=hoyIso();if(h!==ui.hoy){if(ui.fecha===ui.hoy)ui.fecha=h;ui.hoy=h;ui.scrolledToNow=false;refrescar()}else if(ui.view==='hoy')updateNow()},30000);   // cada 30 s: si cambió el día con la pestaña abierta pasa al día nuevo; si no, mueve la línea de ahora
+setInterval(function(){var h=hoyIso();if(h!==ui.hoy){if(ui.fecha===ui.hoy)ui.fecha=h;ui.hoy=h;ui.scrolledToNow=false;if(ui.view==='hoy'&&ui.fecha===h&&!sheetOpen&&!drag){renderHoy();renderNav()}else refrescar()}else if(ui.view==='hoy')updateNow()},30000);   // cada 30 s: si cambió el día con la pestaña abierta pasa al día nuevo; si no, mueve la línea de ahora
 
 // ---------- acciones sobre turnos ----------
 function avanzar(id,btn){
@@ -1130,7 +1132,7 @@ function sheetAlta(o,prev){   // prev: el A que había al salir a "editar precio
   var pre=$('#aPrecio');
   pre.oninput=function(){A.precio=+digitsOf(pre.value)||0;A.fresh=false;pintarAlta(true)};
   pre.onkeypress=function(e){if(e.key&&e.key.length===1&&!/\d/.test(e.key))e.preventDefault()};   // en PC no entran letras ni comas
-  pre.onchange=function(){pintarAlta()};   // al salir del campo se ve el número como lo entendió la app
+  pre.onchange=function(){pre.value=A.precio?money(A.precio).slice(1):''};   // al salir del campo se reformatea sin rehacer el DOM (los chips y el cartel ya se actualizaron en oninput)
   pre.onfocus=function(){A.fresh=true;if(window.innerWidth>=900)setTimeout(function(){pre.select()},0)};   // en PC tipear reemplaza, como el teclado
   $$('[data-k]',s).forEach(function(b){b.onclick=function(){var k=b.getAttribute('data-k'),d=(A.fresh&&k!=='del')?'':String(A.precio||'');   // ⌫ con precio fresco borra solo el último dígito
     if(k==='del')d=d.slice(0,-1);else if(d.length<9)d+=k;A.precio=+d||0;A.fresh=false;pintarAlta()}});
@@ -1153,8 +1155,8 @@ function pintarAlta(skipPrecio){
   if(!skipPrecio)$('#aPrecio').value=A.precio?money(A.precio).slice(1):'';
   $$('[data-p]',s).forEach(function(b){b.classList.toggle('on',b.getAttribute('data-p')===A.pago)});
   $$('[data-e]',s).forEach(function(b){b.classList.toggle('on',b.getAttribute('data-e')===A.estado)});
-  var st=A.nombre?statsCliente(nombreCanonico(A.nombre)):null,lista=(db.servicios.filter(function(x){return x.n===A.servicio})[0]||{p:0}).p,sugP=(st&&st.n)?st.precioHab:lista;
-  $('#aPrecioSug').innerHTML=(st&&st.n&&st.precioHab!==A.precio)?'último pago<b>'+money(st.precioHab)+'</b>':(st&&st.n?'mismo precio<b>que la última vez</b>':'precio de lista<b>'+money(lista)+'</b>');
+  var st=A.nombre?statsCliente(nombreCanonico(A.nombre)):null,lista=(db.servicios.filter(function(x){return x.n===A.servicio})[0]||{p:0}).p,sugP=(st&&st.n&&st.precioHab)?st.precioHab:lista;
+  $('#aPrecioSug').innerHTML=(st&&st.n&&st.precioHab&&st.precioHab!==A.precio)?'último pago<b>'+money(st.precioHab)+'</b>':(st&&st.n&&st.precioHab?'mismo precio<b>que la última vez</b>':'precio de lista<b>'+money(lista)+'</b>');
   $('#aPrecioSug').onclick=function(){if(sugP&&sugP!==A.precio){A.precio=sugP;A.fresh=true;pintarAlta();vibrar(8)}};   // tocar el cartel pone ese precio
   // extras: propina y productos
   var ex='';[1000,2000,5000].forEach(function(p){ex+='<button type="button" class="chip plain'+(A.propina===p?' tipon':'')+'" data-tip="'+p+'">'+icon('tip')+'+'+money(p)+'</button>'});
@@ -1169,19 +1171,20 @@ function pintarAlta(skipPrecio){
     pintarAlta()}});
 }
 function pintarSug(){
-  var q=A.nombre||'',l=sugerirClientes(q,8).filter(function(c){return c.nombre!==q});
-  $('#aSug').innerHTML=l.map(function(c){return '<button type="button" class="chip" data-n="'+esc(c.nombre)+'">'+avatar(c.nombre,'sm')+esc(c.nombre)+(c.reincidente?'<span class="warn">'+icon('warn')+'</span>':'')+'<small>'+(c.n?money(c.precioHab):'nuevo')+'</small></button>'}).join('')||(q?'<span class="mut" style="font-size:13px;padding:6px 0">Cliente nuevo: se le arma la ficha sola.</span>':'');
+  var q=A.nombre||'',ql=q.trim().toLowerCase(),viejo=A.id?(turnoById(A.id)||{}).nombre:null;
+  var l=sugerirClientes(q,8).filter(function(c){return c.nombre!==q&&!(viejo&&c.nombre===viejo&&c.nombre.toLowerCase()===ql)});   // al editar, si solo cambian mayúsculas no se ofrece el nombre viejo
+  $('#aSug').innerHTML=l.map(function(c){return '<button type="button" class="chip" data-n="'+esc(c.nombre)+'">'+avatar(c.nombre,'sm')+esc(c.nombre)+(c.reincidente?'<span class="warn">'+icon('warn')+'</span>':'')+'<small>'+(c.n?money(c.precioHab):c.pendientes.length?'sin cerrar':'nuevo')+'</small></button>'}).join('')||(q?'<span class="mut" style="font-size:13px;padding:6px 0">Cliente nuevo: se le arma la ficha sola.</span>':'');
   $$('#aSug [data-n]').forEach(function(b){b.onclick=function(){elegirCliente(b.getAttribute('data-n'))}});
 }
 function elegirCliente(n){
   A.nombre=n;$('#aNombre').value=n;var st=statsCliente(n);
-  if(st.n){A.precio=st.precioHab;A.fresh=true;var sv=db.servicios.filter(function(x){return x.n===st.servHab})[0];if(sv){A.servicio=sv.n;if(sv.dur)A.dur=sv.dur}}
+  if(st.n){A.fresh=true;var sv=db.servicios.filter(function(x){return x.n===st.servHab})[0];if(sv){A.servicio=sv.n;if(sv.dur)A.dur=sv.dur}A.precio=st.precioHab||(sv?sv.p:A.precio)}   // sin visita paga, cae al precio de lista del habitual o al que ya tenía
   pintarAlta();pintarSug();pintarHint();vibrar(8);
 }
 function pintarHint(){
   var n=(A.nombre||'').trim(),el=$('#aHint');if(!n){el.innerHTML='';return}
   var st=statsCliente(nombreCanonico(n));
-  if(!st.n&&!st.faltas.length){el.innerHTML='<div class="hint">'+icon('clientes')+'<span>Cliente nuevo. Con este turno se le arma la ficha sola.</span></div>';return}
+  if(!st.n&&!st.faltas.length){el.innerHTML='<div class="hint">'+icon('clientes')+'<span>'+(st.pendientes.length?'Tiene '+st.pendientes.length+' turno'+(st.pendientes.length===1?'':'s')+' sin cerrar.':'Cliente nuevo. Con este turno se le arma la ficha sola.')+'</span></div>';return}
   var txt='<b>'+st.n+' visita'+(st.n===1?'':'s')+'</b>'+(st.ritmo?' · viene cada ~'+st.ritmo+' días':'')+(st.ultima?' · última '+haceDias(st.desde)+': '+esc(st.ultima.servicio)+' '+money(st.ultima.precio)+' ('+(st.ultima.pago||'sin cobrar')+')':'');
   if(st.reincidente)txt+=' · <b style="color:var(--red)">faltó '+st.faltas.length+' veces</b>';
   el.innerHTML='<div class="hint'+(st.reincidente?' warn':'')+'">'+avatar(n,'sm')+'<span>'+txt+'</span></div>';
@@ -1193,7 +1196,7 @@ function guardarAlta(){
   if(!n){inp.classList.add('shake');inp.focus();setTimeout(function(){inp.classList.remove('shake')},300);return}
   if(!A.precio){var pr=$('#aPrecio');pr.classList.add('shake');pr.focus();setTimeout(function(){pr.classList.remove('shake')},300);return}
   var hm_=parseHora($('#aHora').value);if(hm_!=null)A.hora=hm_;
-  if(A.estado==='cobrado'&&!A.pago)A.pago=statsCliente(n).pagoHab||'efectivo';
+  if(A.estado==='cobrado'&&!A.pago)A.pago=statsCliente((viejo&&viejo.toLowerCase()===n.toLowerCase())?viejo:n).pagoHab||'efectivo';   // si solo cambian mayúsculas, la ficha todavía está con el nombre viejo
   var nuevo=!t;
   if(!t){t={id:uid(),origen:A.origen};db.turnos.push(t)}
   t.fecha=A.fecha;t.hora=hm(A.hora);t.dur=A.dur;t.nombre=n;t.servicio=A.servicio;t.precio=A.precio||0;t.pago=A.pago;t.estado=A.estado;t.propina=A.propina||0;t.nota=A.nota||'';
@@ -1243,7 +1246,7 @@ var notasT=null;
 function sheetFicha(n,todo){
   var st=statsCliente(n),hoy=hoyIso();
   var estadoTxt,cls='ok',fill=0;
-  if(st.n===0)estadoTxt='Todavía no vino';
+  if(st.n===0)estadoTxt=st.pendientes.length?'Tiene turnos sin cerrar':'Todavía no vino';
   else if(!st.ritmo){estadoTxt='Una sola visita, '+haceDias(st.desde);cls=st.estado==='late'?'late':'ok';fill=Math.min(1,st.desde/45)}
   else{fill=Math.min(1,st.desde/st.ritmo);cls=st.estado==='late'?'late':st.estado==='due'?'due':'ok';
     estadoTxt=st.atraso>0?'Tendría que haber vuelto hace '+st.atraso+' día'+(st.atraso===1?'':'s'):st.atraso===0?'Le toca hoy':'Le toca en '+(-st.atraso)+' día'+(st.atraso===-1?'':'s')}
@@ -1414,7 +1417,7 @@ function renderClientes(){
     else if(c.estado==='due')st=(c.atraso>0?'Le toca<small>desde hace '+c.atraso+' d</small>':'Le toca<small>'+(c.atraso===0?'hoy':'en '+(-c.atraso)+' días')+'</small>');
     else st='Al día<small>'+(c.ultima?haceDias(c.desde):'')+'</small>';
     var fill=c.ritmo?Math.min(1,c.desde/c.ritmo):0;
-    return '<button type="button" class="cli" data-n="'+esc(c.nombre)+'" style="animation-delay:'+Math.min(i*20,300)+'ms">'+avatar(c.nombre)+'<span class="tx"><span class="nm">'+esc(c.nombre)+(c.reincidente?'<span class="tag warn">'+icon('warn')+c.faltas.length+' faltas</span>':'')+(c.futuros.length?'<span class="tag online">turno '+fechaCorta(c.futuros[0].fecha)+'</span>':'')+'</span><span class="sv">'+(c.n?c.n+' visita'+(c.n===1?'':'s')+(c.ritmo?' · cada ~'+c.ritmo+' d':'')+' · '+esc(c.servHab)+' '+money(c.precioHab):'Sin visitas todavía')+'</span></span><span class="st '+sc+'">'+st+'</span><span class="ring '+sc+'"><i style="height:'+Math.round(fill*100)+'%"></i></span></button>'}).join('')+(l.length>120?'<div class="mut" style="grid-column:1/-1;padding:10px 0;text-align:center;font-size:13px">Se muestran 120 de '+l.length+' · buscá por nombre para ver el resto</div>':'')+'</div>'+(l.length?'':'<div class="empty">'+icon('clientes')+(q?'No hay nadie con ese nombre.':s==='recuperar'?'Nadie para recuperar: están todos al día.':'Todavía no hay clientes. Con el primer turno se arma la ficha sola.')+'</div>');
+    return '<button type="button" class="cli" data-n="'+esc(c.nombre)+'" style="animation-delay:'+Math.min(i*20,300)+'ms">'+avatar(c.nombre)+'<span class="tx"><span class="nm">'+esc(c.nombre)+(c.reincidente?'<span class="tag warn">'+icon('warn')+c.faltas.length+' faltas</span>':'')+(c.futuros.length?'<span class="tag online">turno '+fechaCorta(c.futuros[0].fecha)+'</span>':'')+(c.pendientes.length?'<span class="tag warn">'+icon('warn')+'turno sin cerrar</span>':'')+'</span><span class="sv">'+(c.n?c.n+' visita'+(c.n===1?'':'s')+(c.ritmo?' · cada ~'+c.ritmo+' d':'')+' · '+esc(c.servHab)+' '+money(c.precioHab):'Sin visitas todavía')+'</span></span><span class="st '+sc+'">'+st+'</span><span class="ring '+sc+'"><i style="height:'+Math.round(fill*100)+'%"></i></span></button>'}).join('')+(l.length>120?'<div class="mut" style="grid-column:1/-1;padding:10px 0;text-align:center;font-size:13px">Se muestran 120 de '+l.length+' · buscá por nombre para ver el resto</div>':'')+'</div>'+(l.length?'':'<div class="empty">'+icon('clientes')+(q?'No hay nadie con ese nombre.':(s==='recuperar'&&all.length)?'Nadie para recuperar: están todos al día.':'Todavía no hay clientes. Con el primer turno se arma la ficha sola.')+'</div>');
   var v=$('#v-clientes');v.innerHTML=h;
   var inp=$('#cQ');inp.oninput=function(){ui.q=inp.value;var pos=inp.selectionStart;renderClientes();var i2=$('#cQ');i2.focus();try{i2.setSelectionRange(pos,pos)}catch(e){}};
   $$('[data-sort]',v).forEach(function(b){b.onclick=function(){ui.sortCli=b.getAttribute('data-sort');renderClientes()}});
@@ -1525,7 +1528,7 @@ function toggleTheme(){var dark=document.documentElement.getAttribute('data-them
 function init(){
   db=load();
   var roto=!db&&(_loadError==='corrupto'||_loadError==='version');   // había algo guardado pero no se pudo leer
-  if(!db){if(roto){try{localStorage.setItem(DB_KEY+'-backup-'+hoyIso(),_loadRaw)}catch(e){}}db=seedVacio();try{localStorage.setItem(DB_KEY,JSON.stringify(db))}catch(e){}}
+  var bk=false;if(!db){if(roto){try{localStorage.setItem(DB_KEY+'-backup-'+hoyIso(),_loadRaw);bk=true}catch(e){}}db=seedVacio();try{localStorage.setItem(DB_KEY,JSON.stringify(db))}catch(e){}}   // bk: la copia entró de verdad (puede fallar por falta de espacio)
   try{localStorage.setItem(DB_KEY+'-test','1');localStorage.removeItem(DB_KEY+'-test')}catch(e){avisarSinGuardar()}   // ¿este navegador deja guardar?
   setTheme(getTheme());
   $('#themeBtn').onclick=toggleTheme;$('#themeBtnSide').onclick=toggleTheme;
@@ -1534,7 +1537,7 @@ function init(){
   if(window.matchMedia){try{window.matchMedia('(prefers-color-scheme: dark)').addListener(function(){if(getTheme()==='auto')setTheme('auto')})}catch(e){}}
   var hash=(location.hash||'').replace('#','');
   setView(VIEWS.some(function(v){return v.id===hash})?hash:'hoy');
-  if(roto)toast('Los datos guardados no se pudieron leer: quedó una copia en este navegador ('+DB_KEY+'-backup-'+hoyIso()+')');
+  if(roto)toast(bk?'Los datos guardados no se pudieron leer: quedó una copia en este navegador ('+DB_KEY+'-backup-'+hoyIso()+')':'Los datos guardados no se pudieron leer y no entró la copia: la app arranca vacía');
 }
 init();
 </script>

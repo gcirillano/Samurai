@@ -33,7 +33,7 @@
   .stats{grid-template-columns:repeat(3,1fr);gap:6px}
   .stat{padding:7px 8px}
   .stat b{font-size:15px}
-  .stat.ok b{font-size:20px}
+  .stats .stat.ok b{font-size:20px}   /* solo el Facturado de Hoy; el de Semana (.week-sum) queda en 15px */
   .stat.prox{display:none}
   .prox-inline{display:inline}
   .prox-inline b{color:var(--ink);font-size:15px}
@@ -133,7 +133,7 @@ html[data-theme=dark] .tag.warn,html[data-theme=dark] .hint.warn{color:#f08a82} 
 @media (min-width:900px){
   .hoy-grid{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:20px;align-items:start;padding:0 24px}
   .hoy-head{padding-left:0;padding-right:0}
-  .aside{display:flex;flex-direction:column;gap:12px;position:sticky;top:153px;max-height:calc(100vh - 153px);overflow-y:auto}   /* 153 = 66 top-row + 74 weekstrip + 1 borde + 12 */
+  .aside{display:flex;flex-direction:column;gap:12px;position:sticky;top:153px;max-height:calc(100vh - 153px);overflow-y:auto;padding-bottom:24px;margin-bottom:-24px}   /* 153 = 66 top-row + 74 weekstrip + 1 borde + 12; padding + margen negativo: lugar para la sombra del último panel sin agrandar la fila */
   .stats{display:none}
   .quick{display:none}
   .agenda{margin:0 0 20px}
@@ -166,8 +166,10 @@ html[data-theme=dark] .tag.warn,html[data-theme=dark] .hint.warn{color:#f08a82} 
 .next-card .sv{font-size:13px;color:var(--mut)}
 .next-card .in{font-size:13px;font-weight:700;color:var(--silla);white-space:nowrap}
 .empty{padding:40px 16px;text-align:center;color:var(--mut);font-size:14px}
-.empty svg{width:40px;height:40px;margin:0 auto 10px;opacity:.5}
+.empty svg{display:block;width:40px;height:40px;margin:0 auto 10px;opacity:.5}   /* en bloque: inline, el margin auto no centra */
 .hoy-grid .empty{padding:8px 16px 6px}
+.hoy-grid .empty svg{display:inline-block;vertical-align:middle;margin:0 8px 0 0}   /* en Hoy es una tira arriba de la grilla: ícono y texto en una línea */
+@media (min-width:900px){.hoy-grid .empty{padding-left:0;padding-right:0}}   /* alineado con la agenda, como .hoy-head; va después de la regla de arriba para ganarle */
 
 /* ---------- 4) Sheet (panel inferior) ---------- */
 .sheet-bg{position:fixed;left:0;top:0;right:0;bottom:0;background:rgba(10,8,6,.45);z-index:40;opacity:0;visibility:hidden;transition:opacity .25s,visibility .25s;display:flex;align-items:flex-end;justify-content:center}

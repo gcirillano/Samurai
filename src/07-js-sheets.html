@@ -54,7 +54,7 @@ function sheetAlta(o,prev){   // prev: el A que había al salir a "editar precio
   var pre=$('#aPrecio');
   pre.oninput=function(){A.precio=+digitsOf(pre.value)||0;A.fresh=false;pintarAlta(true)};
   pre.onkeypress=function(e){if(e.key&&e.key.length===1&&!/\d/.test(e.key))e.preventDefault()};   // en PC no entran letras ni comas
-  pre.onchange=function(){pintarAlta()};   // al salir del campo se ve el número como lo entendió la app
+  pre.onchange=function(){pre.value=A.precio?money(A.precio).slice(1):''};   // al salir del campo se reformatea sin rehacer el DOM (los chips y el cartel ya se actualizaron en oninput)
   pre.onfocus=function(){A.fresh=true;if(window.innerWidth>=900)setTimeout(function(){pre.select()},0)};   // en PC tipear reemplaza, como el teclado
   $$('[data-k]',s).forEach(function(b){b.onclick=function(){var k=b.getAttribute('data-k'),d=(A.fresh&&k!=='del')?'':String(A.precio||'');   // ⌫ con precio fresco borra solo el último dígito
     if(k==='del')d=d.slice(0,-1);else if(d.length<9)d+=k;A.precio=+d||0;A.fresh=false;pintarAlta()}});
@@ -77,8 +77,8 @@ function pintarAlta(skipPrecio){
   if(!skipPrecio)$('#aPrecio').value=A.precio?money(A.precio).slice(1):'';
   $$('[data-p]',s).forEach(function(b){b.classList.toggle('on',b.getAttribute('data-p')===A.pago)});
   $$('[data-e]',s).forEach(function(b){b.classList.toggle('on',b.getAttribute('data-e')===A.estado)});
-  var st=A.nombre?statsCliente(nombreCanonico(A.nombre)):null,lista=(db.servicios.filter(function(x){return x.n===A.servicio})[0]||{p:0}).p,sugP=(st&&st.n)?st.precioHab:lista;
-  $('#aPrecioSug').innerHTML=(st&&st.n&&st.precioHab!==A.precio)?'último pago<b>'+money(st.precioHab)+'</b>':(st&&st.n?'mismo precio<b>que la última vez</b>':'precio de lista<b>'+money(lista)+'</b>');
+  var st=A.nombre?statsCliente(nombreCanonico(A.nombre)):null,lista=(db.servicios.filter(function(x){return x.n===A.servicio})[0]||{p:0}).p,sugP=(st&&st.n&&st.precioHab)?st.precioHab:lista;
+  $('#aPrecioSug').innerHTML=(st&&st.n&&st.precioHab&&st.precioHab!==A.precio)?'último pago<b>'+money(st.precioHab)+'</b>':(st&&st.n&&st.precioHab?'mismo precio<b>que la última vez</b>':'precio de lista<b>'+money(lista)+'</b>');
   $('#aPrecioSug').onclick=function(){if(sugP&&sugP!==A.precio){A.precio=sugP;A.fresh=true;pintarAlta();vibrar(8)}};   // tocar el cartel pone ese precio
   // extras: propina y productos
   var ex='';[1000,2000,5000].forEach(function(p){ex+='<button type="button" class="chip plain'+(A.propina===p?' tipon':'')+'" data-tip="'+p+'">'+icon('tip')+'+'+money(p)+'</button>'});
@@ -93,19 +93,20 @@ function pintarAlta(skipPrecio){
     pintarAlta()}});
 }
 function pintarSug(){
-  var q=A.nombre||'',l=sugerirClientes(q,8).filter(function(c){return c.nombre!==q});
-  $('#aSug').innerHTML=l.map(function(c){return '<button type="button" class="chip" data-n="'+esc(c.nombre)+'">'+avatar(c.nombre,'sm')+esc(c.nombre)+(c.reincidente?'<span class="warn">'+icon('warn')+'</span>':'')+'<small>'+(c.n?money(c.precioHab):'nuevo')+'</small></button>'}).join('')||(q?'<span class="mut" style="font-size:13px;padding:6px 0">Cliente nuevo: se le arma la ficha sola.</span>':'');
+  var q=A.nombre||'',ql=q.trim().toLowerCase(),viejo=A.id?(turnoById(A.id)||{}).nombre:null;
+  var l=sugerirClientes(q,8).filter(function(c){return c.nombre!==q&&!(viejo&&c.nombre===viejo&&c.nombre.toLowerCase()===ql)});   // al editar, si solo cambian mayúsculas no se ofrece el nombre viejo
+  $('#aSug').innerHTML=l.map(function(c){return '<button type="button" class="chip" data-n="'+esc(c.nombre)+'">'+avatar(c.nombre,'sm')+esc(c.nombre)+(c.reincidente?'<span class="warn">'+icon('warn')+'</span>':'')+'<small>'+(c.n?money(c.precioHab):c.pendientes.length?'sin cerrar':'nuevo')+'</small></button>'}).join('')||(q?'<span class="mut" style="font-size:13px;padding:6px 0">Cliente nuevo: se le arma la ficha sola.</span>':'');
   $$('#aSug [data-n]').forEach(function(b){b.onclick=function(){elegirCliente(b.getAttribute('data-n'))}});
 }
 function elegirCliente(n){
   A.nombre=n;$('#aNombre').value=n;var st=statsCliente(n);
-  if(st.n){A.precio=st.precioHab;A.fresh=true;var sv=db.servicios.filter(function(x){return x.n===st.servHab})[0];if(sv){A.servicio=sv.n;if(sv.dur)A.dur=sv.dur}}
+  if(st.n){A.fresh=true;var sv=db.servicios.filter(function(x){return x.n===st.servHab})[0];if(sv){A.servicio=sv.n;if(sv.dur)A.dur=sv.dur}A.precio=st.precioHab||(sv?sv.p:A.precio)}   // sin visita paga, cae al precio de lista del habitual o al que ya tenía
   pintarAlta();pintarSug();pintarHint();vibrar(8);
 }
 function pintarHint(){
   var n=(A.nombre||'').trim(),el=$('#aHint');if(!n){el.innerHTML='';return}
   var st=statsCliente(nombreCanonico(n));
-  if(!st.n&&!st.faltas.length){el.innerHTML='<div class="hint">'+icon('clientes')+'<span>Cliente nuevo. Con este turno se le arma la ficha sola.</span></div>';return}
+  if(!st.n&&!st.faltas.length){el.innerHTML='<div class="hint">'+icon('clientes')+'<span>'+(st.pendientes.length?'Tiene '+st.pendientes.length+' turno'+(st.pendientes.length===1?'':'s')+' sin cerrar.':'Cliente nuevo. Con este turno se le arma la ficha sola.')+'</span></div>';return}
   var txt='<b>'+st.n+' visita'+(st.n===1?'':'s')+'</b>'+(st.ritmo?' · viene cada ~'+st.ritmo+' días':'')+(st.ultima?' · última '+haceDias(st.desde)+': '+esc(st.ultima.servicio)+' '+money(st.ultima.precio)+' ('+(st.ultima.pago||'sin cobrar')+')':'');
   if(st.reincidente)txt+=' · <b style="color:var(--red)">faltó '+st.faltas.length+' veces</b>';
   el.innerHTML='<div class="hint'+(st.reincidente?' warn':'')+'">'+avatar(n,'sm')+'<span>'+txt+'</span></div>';
@@ -117,7 +118,7 @@ function guardarAlta(){
   if(!n){inp.classList.add('shake');inp.focus();setTimeout(function(){inp.classList.remove('shake')},300);return}
   if(!A.precio){var pr=$('#aPrecio');pr.classList.add('shake');pr.focus();setTimeout(function(){pr.classList.remove('shake')},300);return}
   var hm_=parseHora($('#aHora').value);if(hm_!=null)A.hora=hm_;
-  if(A.estado==='cobrado'&&!A.pago)A.pago=statsCliente(n).pagoHab||'efectivo';
+  if(A.estado==='cobrado'&&!A.pago)A.pago=statsCliente((viejo&&viejo.toLowerCase()===n.toLowerCase())?viejo:n).pagoHab||'efectivo';   // si solo cambian mayúsculas, la ficha todavía está con el nombre viejo
   var nuevo=!t;
   if(!t){t={id:uid(),origen:A.origen};db.turnos.push(t)}
   t.fecha=A.fecha;t.hora=hm(A.hora);t.dur=A.dur;t.nombre=n;t.servicio=A.servicio;t.precio=A.precio||0;t.pago=A.pago;t.estado=A.estado;t.propina=A.propina||0;t.nota=A.nota||'';
@@ -167,7 +168,7 @@ var notasT=null;
 function sheetFicha(n,todo){
   var st=statsCliente(n),hoy=hoyIso();
   var estadoTxt,cls='ok',fill=0;
-  if(st.n===0)estadoTxt='Todavía no vino';
+  if(st.n===0)estadoTxt=st.pendientes.length?'Tiene turnos sin cerrar':'Todavía no vino';
   else if(!st.ritmo){estadoTxt='Una sola visita, '+haceDias(st.desde);cls=st.estado==='late'?'late':'ok';fill=Math.min(1,st.desde/45)}
   else{fill=Math.min(1,st.desde/st.ritmo);cls=st.estado==='late'?'late':st.estado==='due'?'due':'ok';
     estadoTxt=st.atraso>0?'Tendría que haber vuelto hace '+st.atraso+' día'+(st.atraso===1?'':'s'):st.atraso===0?'Le toca hoy':'Le toca en '+(-st.atraso)+' día'+(st.atraso===-1?'':'s')}

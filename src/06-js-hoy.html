@@ -146,7 +146,7 @@ function updateNow(){
   if(!esHoy||m<ini||m>fin){nl.style.display='none';return}
   nl.style.display='block';nl.style.top=((m-ini)/30*SLOT_H)+'px';$('#nowLbl').textContent=hm(m);
 }
-setInterval(function(){var h=hoyIso();if(h!==ui.hoy){if(ui.fecha===ui.hoy)ui.fecha=h;ui.hoy=h;ui.scrolledToNow=false;refrescar()}else if(ui.view==='hoy')updateNow()},30000);   // cada 30 s: si cambió el día con la pestaña abierta pasa al día nuevo; si no, mueve la línea de ahora
+setInterval(function(){var h=hoyIso();if(h!==ui.hoy){if(ui.fecha===ui.hoy)ui.fecha=h;ui.hoy=h;ui.scrolledToNow=false;if(ui.view==='hoy'&&ui.fecha===h&&!sheetOpen&&!drag){renderHoy();renderNav()}else refrescar()}else if(ui.view==='hoy')updateNow()},30000);   // cada 30 s: si cambió el día con la pestaña abierta pasa al día nuevo; si no, mueve la línea de ahora
 
 // ---------- acciones sobre turnos ----------
 function avanzar(id,btn){

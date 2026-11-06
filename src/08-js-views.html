@@ -52,7 +52,7 @@ function renderClientes(){
     else if(c.estado==='due')st=(c.atraso>0?'Le toca<small>desde hace '+c.atraso+' d</small>':'Le toca<small>'+(c.atraso===0?'hoy':'en '+(-c.atraso)+' días')+'</small>');
     else st='Al día<small>'+(c.ultima?haceDias(c.desde):'')+'</small>';
     var fill=c.ritmo?Math.min(1,c.desde/c.ritmo):0;
-    return '<button type="button" class="cli" data-n="'+esc(c.nombre)+'" style="animation-delay:'+Math.min(i*20,300)+'ms">'+avatar(c.nombre)+'<span class="tx"><span class="nm">'+esc(c.nombre)+(c.reincidente?'<span class="tag warn">'+icon('warn')+c.faltas.length+' faltas</span>':'')+(c.futuros.length?'<span class="tag online">turno '+fechaCorta(c.futuros[0].fecha)+'</span>':'')+'</span><span class="sv">'+(c.n?c.n+' visita'+(c.n===1?'':'s')+(c.ritmo?' · cada ~'+c.ritmo+' d':'')+' · '+esc(c.servHab)+' '+money(c.precioHab):'Sin visitas todavía')+'</span></span><span class="st '+sc+'">'+st+'</span><span class="ring '+sc+'"><i style="height:'+Math.round(fill*100)+'%"></i></span></button>'}).join('')+(l.length>120?'<div class="mut" style="grid-column:1/-1;padding:10px 0;text-align:center;font-size:13px">Se muestran 120 de '+l.length+' · buscá por nombre para ver el resto</div>':'')+'</div>'+(l.length?'':'<div class="empty">'+icon('clientes')+(q?'No hay nadie con ese nombre.':s==='recuperar'?'Nadie para recuperar: están todos al día.':'Todavía no hay clientes. Con el primer turno se arma la ficha sola.')+'</div>');
+    return '<button type="button" class="cli" data-n="'+esc(c.nombre)+'" style="animation-delay:'+Math.min(i*20,300)+'ms">'+avatar(c.nombre)+'<span class="tx"><span class="nm">'+esc(c.nombre)+(c.reincidente?'<span class="tag warn">'+icon('warn')+c.faltas.length+' faltas</span>':'')+(c.futuros.length?'<span class="tag online">turno '+fechaCorta(c.futuros[0].fecha)+'</span>':'')+(c.pendientes.length?'<span class="tag warn">'+icon('warn')+'turno sin cerrar</span>':'')+'</span><span class="sv">'+(c.n?c.n+' visita'+(c.n===1?'':'s')+(c.ritmo?' · cada ~'+c.ritmo+' d':'')+' · '+esc(c.servHab)+' '+money(c.precioHab):'Sin visitas todavía')+'</span></span><span class="st '+sc+'">'+st+'</span><span class="ring '+sc+'"><i style="height:'+Math.round(fill*100)+'%"></i></span></button>'}).join('')+(l.length>120?'<div class="mut" style="grid-column:1/-1;padding:10px 0;text-align:center;font-size:13px">Se muestran 120 de '+l.length+' · buscá por nombre para ver el resto</div>':'')+'</div>'+(l.length?'':'<div class="empty">'+icon('clientes')+(q?'No hay nadie con ese nombre.':(s==='recuperar'&&all.length)?'Nadie para recuperar: están todos al día.':'Todavía no hay clientes. Con el primer turno se arma la ficha sola.')+'</div>');
   var v=$('#v-clientes');v.innerHTML=h;
   var inp=$('#cQ');inp.oninput=function(){ui.q=inp.value;var pos=inp.selectionStart;renderClientes();var i2=$('#cQ');i2.focus();try{i2.setSelectionRange(pos,pos)}catch(e){}};
   $$('[data-sort]',v).forEach(function(b){b.onclick=function(){ui.sortCli=b.getAttribute('data-sort');renderClientes()}});
@@ -163,7 +163,7 @@ function toggleTheme(){var dark=document.documentElement.getAttribute('data-them
 function init(){
   db=load();
   var roto=!db&&(_loadError==='corrupto'||_loadError==='version');   // había algo guardado pero no se pudo leer
-  if(!db){if(roto){try{localStorage.setItem(DB_KEY+'-backup-'+hoyIso(),_loadRaw)}catch(e){}}db=seedVacio();try{localStorage.setItem(DB_KEY,JSON.stringify(db))}catch(e){}}
+  var bk=false;if(!db){if(roto){try{localStorage.setItem(DB_KEY+'-backup-'+hoyIso(),_loadRaw);bk=true}catch(e){}}db=seedVacio();try{localStorage.setItem(DB_KEY,JSON.stringify(db))}catch(e){}}   // bk: la copia entró de verdad (puede fallar por falta de espacio)
   try{localStorage.setItem(DB_KEY+'-test','1');localStorage.removeItem(DB_KEY+'-test')}catch(e){avisarSinGuardar()}   // ¿este navegador deja guardar?
   setTheme(getTheme());
   $('#themeBtn').onclick=toggleTheme;$('#themeBtnSide').onclick=toggleTheme;
@@ -172,7 +172,7 @@ function init(){
   if(window.matchMedia){try{window.matchMedia('(prefers-color-scheme: dark)').addListener(function(){if(getTheme()==='auto')setTheme('auto')})}catch(e){}}
   var hash=(location.hash||'').replace('#','');
   setView(VIEWS.some(function(v){return v.id===hash})?hash:'hoy');
-  if(roto)toast('Los datos guardados no se pudieron leer: quedó una copia en este navegador ('+DB_KEY+'-backup-'+hoyIso()+')');
+  if(roto)toast(bk?'Los datos guardados no se pudieron leer: quedó una copia en este navegador ('+DB_KEY+'-backup-'+hoyIso()+')':'Los datos guardados no se pudieron leer y no entró la copia: la app arranca vacía');
 }
 init();
 </script>
