@@ -41,7 +41,7 @@ function $$(s,r){return Array.prototype.slice.call((r||document).querySelectorAl
 function fechaLarga(f){var d=fromIso(f);return DIAS[d.getDay()]+' '+d.getDate()+' de '+MESES[d.getMonth()]}
 function fechaCorta(f){var d=fromIso(f);return DIAS_C[d.getDay()]+' '+d.getDate()+' '+MESES_C[d.getMonth()]}
 function haceDias(n){if(n===0)return 'hoy';if(n===1)return 'ayer';if(n<7)return 'hace '+n+' días';if(n<30)return 'hace '+Math.round(n/7)+' sem';if(n<365)return 'hace '+Math.round(n/30)+' meses';return 'hace más de un año'}
-function icon(n,cls){return '<svg class="'+(cls||'')+'" aria-hidden="true"><use href="#i-'+n+'"/></svg>'}
+function icon(n,cls){return '<svg class="'+(cls||'')+'" width="1em" height="1em" aria-hidden="true"><use href="#i-'+n+'"/></svg>'}   // tamaño por defecto: sin él, un svg sin regla CSS mide 300×150
 function hashStr(s){var h=0;for(var i=0;i<s.length;i++){h=(h*31+s.charCodeAt(i))|0}return Math.abs(h)}
 function avColor(n){return AV_COLORS[hashStr(n.toLowerCase())%AV_COLORS.length]}
 function iniciales(n){var w=n.replace(/\(.*?\)/g,'').trim().split(/\s+/).filter(Boolean);var s=(w[0]||'?').charAt(0);if(w[1])s+=w[1].charAt(0);return s.toUpperCase()}
@@ -153,7 +153,7 @@ function exportarClientes(){
 }
 function exportarCaja(){
   var filas=[['Fecha','Hora','Tipo','Detalle','Cliente','Monto','Forma de pago','Estado']];
-  db.turnos.slice().sort(byFechaHora).forEach(function(t){filas.push([t.fecha,t.hora,'Turno',t.servicio,t.nombre,t.precio+(t.propina||0),t.pago,ESTADOS[t.estado]])});
+  db.turnos.slice().sort(byFechaHora).forEach(function(t){filas.push([t.fecha,t.hora,'Turno',t.servicio,t.nombre,t.estado==='cobrado'?t.precio+(t.propina||0):0,t.pago,ESTADOS[t.estado]])});
   db.ventas.forEach(function(v){filas.push([v.fecha,v.hora,'Producto',v.nombre+(v.cant>1?' x'+v.cant:''),v.cliente||'',v.precio*v.cant,v.pago,'Vendido'])});
   db.gastos.forEach(function(g){filas.push([g.fecha,'','Gasto',g.concepto,'',-g.monto,'',''])});
   descargarCSV('samurai-caja-'+hoyIso()+'.csv',filas);

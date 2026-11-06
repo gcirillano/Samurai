@@ -25,7 +25,7 @@ function sheetAlta(o){
   o=o||{};var t=o.id?turnoById(o.id):null,hoy=hoyIso();
   A=t?{id:t.id,fecha:t.fecha,hora:toMin(t.hora),dur:t.dur||30,nombre:t.nombre,servicio:t.servicio,precio:t.precio,pago:t.pago,estado:t.estado,origen:t.origen,propina:t.propina||0,nota:t.nota||'',fresh:true}
      :{id:null,fecha:o.fecha||ui.fecha,hora:toMin(o.hora||'10:00'),dur:30,nombre:o.nombre||'',servicio:db.servicios[0].n,precio:db.servicios[0].p,pago:'',estado:o.enSilla?'silla':'confirmado',origen:'local',propina:0,nota:'',fresh:true};
-  A.ventas=db.ventas.filter(function(v){return v.turnoId===A.id}).map(function(v){return {prodId:v.prodId,nombre:v.nombre,precio:v.precio,id:v.id}});
+  A.ventas=(A.id?db.ventas.filter(function(v){return v.turnoId===A.id}):[]).map(function(v){return {prodId:v.prodId,nombre:v.nombre,precio:v.precio,id:v.id}});
   A.ventasQuitar=[];
   var svc=db.servicios.map(function(s,i){return '<button type="button" class="svc" data-svc="'+i+'"><b>'+esc(s.n)+'</b><small>'+money(s.p)+'</small></button>'}).join('');
   var body='<span class="lbl">Horario · '+fechaCorta(A.fecha)+'</span>'
@@ -67,7 +67,7 @@ function sheetAlta(o){
   if(A.id)$('#aBorrar').onclick=function(){var id=A.id;closeSheet();borrarTurno(id)};
   $('#aNota').oninput=function(){A.nota=this.value};
   inp.onkeydown=function(e){if(e.key==='Enter'){e.preventDefault();guardarAlta()}};
-  pintarAlta();pintarSug();pintarHint();
+  if(!A.id&&A.nombre)elegirCliente(A.nombre);else{pintarAlta();pintarSug();pintarHint()}   // desde la ficha: precio y servicio habituales
 }
 function pintarAlta(skipPrecio){
   var s=$('#sheet');
@@ -179,7 +179,7 @@ function sheetFicha(n,todo){
   openSheet(sheetFrame(esc(n),'',body,''));
   $('#fTurno').onclick=function(){closeSheet();sheetAlta({fecha:hoyIso(),hora:sugerirHora(hoyIso()),nombre:n})};
   if(prox)$('#fProx').onclick=function(){closeSheet();sheetAlta({fecha:prox,hora:sugerirHora(prox),nombre:n})};
-  if(tel)$('#fWa').onclick=function(){var d=tel;if(d.charAt(0)==='0')d=d.slice(1);if(d.length===10)d='549'+d;else if(d.indexOf('54')!==0)d='54'+d;window.open('https://wa.me/'+d+'?text='+encodeURIComponent(msg),'_blank')};
+  if(tel)$('#fWa').onclick=function(){var d=tel;if(d.charAt(0)==='0')d=d.slice(1);if(d.length===10&&d.indexOf('15')===0)d='11'+d.slice(2);if(d.length===10)d='549'+d;else if(d.indexOf('54')===0&&d.indexOf('549')!==0&&d.length===12)d='549'+d.slice(2);else if(d.indexOf('54')!==0)d='54'+d;window.open('https://wa.me/'+d+'?text='+encodeURIComponent(msg),'_blank')};
   else $('#fCopy').onclick=function(){copiar(msg);toast('Mensaje copiado. Cargale el teléfono y se manda por WhatsApp.')};
   $('#fNotas').oninput=function(){var v=this.value;clearTimeout(notasT);notasT=setTimeout(function(){db.clientes[n]=db.clientes[n]||{tel:'',notas:''};db.clientes[n].notas=v;save()},400)};
   $('#fTel').oninput=function(){var v=this.value;db.clientes[n]=db.clientes[n]||{tel:'',notas:''};db.clientes[n].tel=v;save()};
@@ -257,12 +257,12 @@ function sheetMore(){
     +'<div class="setrow"><span>Servicios y precios</span><button type="button" class="btn sm" id="mSvc">'+icon('edit')+'Editar</button></div>'
     +'<div class="setrow"><span>Exportar a planilla<br><small class="mut">CSV, se abre en Excel o Google Sheets</small></span><div style="display:flex;gap:6px"><button type="button" class="btn sm" id="mExpC">'+icon('down')+'Clientes</button><button type="button" class="btn sm" id="mExpK">'+icon('down')+'Caja</button></div></div>'
     +'<div class="setrow"><span>Borrar todos los datos<br><small class="mut">Se guardan solo en este navegador. Exportá antes a planilla.</small></span><button type="button" class="btn sm ghost danger" id="mReset">'+icon('reset')+'Borrar todo</button></div>'
-    +'<div class="setrow mut" style="font-size:12px">Samurai Barber · gestión interna. Las reservas online entran solas a la agenda cuando esté conectado el sistema de turnos (hoy están simuladas).</div>';
+    +'<div class="setrow mut" style="font-size:12px">Samurai Barber · gestión interna. Todavía no hay sistema de turnos online conectado: cuando lo haya, las reservas van a entrar solas a la agenda.</div>';
   openSheet(sheetFrame('Ajustes','',body,''));
   $$('#sheet [data-th]').forEach(function(b){b.onclick=function(){setTheme(b.getAttribute('data-th'));$$('#sheet [data-th]').forEach(function(x){x.classList.toggle('on',x===b)})}});
   $('#mSvc').onclick=function(){sheetServicios()};
   $('#mExpC').onclick=function(){exportarClientes();toast('Planilla de clientes descargada')};
   $('#mExpK').onclick=function(){exportarCaja();toast('Planilla de caja descargada')};
-  $('#mReset').onclick=function(){if(confirm('¿Borrar TODOS los datos de este navegador (turnos, clientes, caja y productos)? No se puede deshacer.')){borrarTodo();prevVals={};closeSheet();ui.fecha=hoyIso();refrescar();toast('Datos borrados')}};
+  $('#mReset').onclick=function(){if(confirm('¿Borrar TODOS los datos de este navegador (turnos, clientes, caja, productos y la lista de servicios y precios)? No se puede deshacer.')){borrarTodo();prevVals={};closeSheet();ui.fecha=hoyIso();refrescar();toast('Datos borrados')}};
 }
 </script>

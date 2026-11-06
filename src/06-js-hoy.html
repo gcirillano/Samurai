@@ -67,7 +67,8 @@ function renderHoy(opts){
     +'</div>';
   h+='<div class="quick"><button type="button" class="pri" id="qNuevo">'+icon('plus')+'Nuevo turno</button><button type="button" id="qLlego">'+icon('walk')+'Llegó sin turno</button></div>';
   // --- agenda ---
-  h+='<div class="agenda" id="agenda" style="height:'+H+'px"><div class="rail">';
+  if(!ts.length)h+='<div class="empty">'+icon('scissors')+'Día libre. Tocá un horario para anotar un turno.</div>';   // arriba de la grilla, donde se ve
+  h+='<div class="agenda'+(opts.keepScroll?' noanim':'')+'" id="agenda" style="height:'+H+'px"><div class="rail">';
   for(var m=HORA_INI;m<=fin;m+=30){var top=(m-HORA_INI)/30*SLOT_H;h+='<span class="tick'+(m%60===0?' hour':'')+'" style="top:'+top+'px">'+hm(m)+'</span>'}
   h+='</div><div class="grid" style="height:'+H+'px">';
   for(var m2=HORA_INI;m2<=fin;m2+=30){h+='<div class="line'+(m2%60===0?' hour':'')+'" style="top:'+((m2-HORA_INI)/30*SLOT_H)+'px"></div>'}
@@ -98,7 +99,6 @@ function renderHoy(opts){
   });
   h+='<div class="now" id="nowLine" style="display:none"><span class="lbl" id="nowLbl"></span><span class="bar"></span><span class="dot"></span></div>';
   h+='</div></div>';   // grid, agenda
-  if(!ts.length)h+='<div class="empty">'+icon('scissors')+'Día libre. Tocá un horario para anotar un turno.</div>';
   h+='</div>';         // columna izquierda
   // --- panel lateral (escritorio) ---
   h+='<div class="aside">';
@@ -127,7 +127,7 @@ function renderHoy(opts){
   animarContadores(v);
   updateNow();
   if(opts.paid){var card=$('.turno[data-id="'+opts.paid+'"]',v);if(card){card.classList.add('paid-anim');var r=$('.act',card).getBoundingClientRect();confetti(r.left+r.width/2,r.top+r.height/2)}}
-  if(esHoy&&!ui.scrolledToNow&&!opts.keepScroll){ui.scrolledToNow=true;var nl=$('#nowLine');if(nl&&nl.style.display!=='none'){var y=nl.getBoundingClientRect().top+window.pageYOffset-220;if(y>0)window.scrollTo(0,y)}}
+  if(esHoy&&ts.length&&!ui.scrolledToNow&&!opts.keepScroll){ui.scrolledToNow=true;var nl=$('#nowLine');if(nl&&nl.style.display!=='none'){var y=nl.getBoundingClientRect().top+window.pageYOffset-220;if(y>0)window.scrollTo(0,y)}}
 }
 function sugerirHora(f){ // primer hueco libre desde ahora (si es hoy) o desde las 10:00
   var ts=turnosDe(f),m=f===hoyIso()?Math.max(HORA_INI,Math.ceil(ahoraMin()/30)*30):HORA_INI;
@@ -167,8 +167,8 @@ function cobrar(id,pago){
 function setEstado(id,estado){
   var t=turnoById(id);if(!t)return;
   if(estado==='cobrado'){cobrar(id);return}
-  var antes=t.estado;t.estado=estado;if(estado!=='cobrado')t.pago=estado==='nocame'?'':t.pago;save();refrescar();
-  if(estado==='nocame'){var st=statsCliente(t.nombre);toast(esc(t.nombre)+' faltó'+(st.faltas.length>=2?' · ya van '+st.faltas.length:''),{label:'Deshacer',fn:function(){t.estado=antes;save();refrescar()}})}
+  var antes=t.estado,pagoAntes=t.pago;t.estado=estado;if(estado==='nocame')t.pago='';save();refrescar();
+  if(estado==='nocame'){var st=statsCliente(t.nombre);toast(esc(t.nombre)+' faltó'+(st.faltas.length>=2?' · ya van '+st.faltas.length:''),{label:'Deshacer',fn:function(){t.estado=antes;t.pago=pagoAntes;save();refrescar()}})}
   else toast(ESTADOS[estado]);
 }
 function borrarTurno(id){

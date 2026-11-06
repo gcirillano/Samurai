@@ -148,7 +148,7 @@ function setView(id){
   ui.view=id;$$('.view').forEach(function(v){v.classList.toggle('on',v.id==='v-'+id)});
   try{history.replaceState(null,'','#'+id)}catch(e){}
   renderNav();
-  if(id==='hoy')renderHoy();else{window.scrollTo(0,0);if(id==='semana'){ui.semana=lunesDe(fromIso(ui.fecha));renderSemana()}else if(id==='clientes')renderClientes();else if(id==='caja')renderCaja();else renderProductos();renderWeekstrip()}
+  if(id==='hoy'){window.scrollTo(0,0);ui.scrolledToNow=false;renderHoy()}else{window.scrollTo(0,0);if(id==='semana'){ui.semana=lunesDe(fromIso(ui.fecha));renderSemana()}else if(id==='clientes')renderClientes();else if(id==='caja')renderCaja();else renderProductos();renderWeekstrip()}
 }
 function getTheme(){try{return localStorage.getItem('samurai-v2-theme')||'auto'}catch(e){return 'auto'}}
 function setTheme(t){
@@ -164,7 +164,7 @@ function init(){
   setTheme(getTheme());
   $('#themeBtn').onclick=toggleTheme;$('#themeBtnSide').onclick=toggleTheme;
   $('#moreBtn').onclick=sheetMore;$('#exportBtn').onclick=sheetMore;
-  $('#resetBtnSide').onclick=function(){if(confirm('¿Borrar TODOS los datos de este navegador (turnos, clientes, caja y productos)? No se puede deshacer.')){borrarTodo();prevVals={};ui.fecha=hoyIso();refrescar();toast('Datos borrados')}};
+  $('#resetBtnSide').onclick=function(){if(confirm('¿Borrar TODOS los datos de este navegador (turnos, clientes, caja, productos y la lista de servicios y precios)? No se puede deshacer.')){borrarTodo();prevVals={};ui.fecha=hoyIso();refrescar();toast('Datos borrados')}};
   if(window.matchMedia){try{window.matchMedia('(prefers-color-scheme: dark)').addListener(function(){if(getTheme()==='auto')setTheme('auto')})}catch(e){}}
   var hash=(location.hash||'').replace('#','');
   setView(VIEWS.some(function(v){return v.id===hash})?hash:'hoy');
